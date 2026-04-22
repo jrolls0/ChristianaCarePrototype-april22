@@ -1,0 +1,3933 @@
+'use client';
+
+import Image from 'next/image';
+import {
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type ComponentType,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  Bell,
+  Brain,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Circle,
+  CircleHelp,
+  Clock3,
+  Cross,
+  Eye,
+  EyeOff,
+  FileText,
+  Heart,
+  HeartPulse,
+  House,
+  ListChecks,
+  Lock,
+  Mail,
+  MapPin,
+  Paperclip,
+  PenSquare,
+  Phone,
+  Search,
+  SendHorizontal,
+  UserRound,
+  Users,
+} from 'lucide-react';
+
+type OnboardingStep = 'entry' | 'servicesConsent' | 'medicalRecordsConsent' | 'carePartnerPrompt' | 'app';
+type EntryAuthTab = 'register' | 'login';
+type AppTab = 'home' | 'careTeam' | 'profile' | 'help';
+type CareTeamIntent = 'openFirstUnread' | null;
+type TodoStatus = 'pending' | 'completed';
+
+type MockTodo = {
+  id: string;
+  title: string;
+  description: string;
+  status: TodoStatus;
+  priority: 'high' | 'medium' | 'low';
+  type: 'governmentIdUpload' | 'insuranceCardUpload' | 'healthQuestionnaire' | 'carePartnerInvite';
+};
+
+type QuestionnaireStep = 1 | 2;
+type BinaryChoice = '' | 'yes' | 'no';
+type TernaryChoice = '' | 'yes' | 'no' | 'notSure';
+type SubstanceChoice = '' | 'yes' | 'no' | 'preferNotToAnswer';
+
+type CareTeamSegment = 'virtualAssistant' | 'messageCenter';
+type AssistantRole = 'assistant' | 'user' | 'system';
+type StaffRole = 'patient' | 'dusw' | 'tc_employee';
+
+type AssistantMessage = {
+  id: string;
+  role: AssistantRole;
+  content: string;
+  timestampLabel: string;
+  navigationLabel?: string;
+};
+
+type CareThreadMessage = {
+  id: string;
+  senderName: string;
+  senderRole: StaffRole;
+  body: string;
+  timestampLabel: string;
+  isRead: boolean;
+};
+
+type CareThread = {
+  id: string;
+  subject: string;
+  participantName: string;
+  participantRole: Exclude<StaffRole, 'patient'>;
+  participantOrganization: string;
+  previewText: string;
+  relativeTimeLabel: string;
+  unreadCount: number;
+  messages: CareThreadMessage[];
+};
+
+type ComposeAttachment = {
+  id: string;
+  name: string;
+  sizeLabel: string;
+};
+
+type QuickHelpChipData = {
+  id: string;
+  title: string;
+  icon: ComponentType<{ className?: string }>;
+};
+
+type RegistrationPayload = {
+  displayName: string;
+  email: string;
+};
+
+type CarePartnerInvitePayload = {
+  name: string;
+  email: string;
+  phone: string;
+  consentGiven: boolean;
+};
+
+type RegistrationErrors = Partial<Record<
+  | 'firstName'
+  | 'lastName'
+  | 'email'
+  | 'password'
+  | 'confirmPassword'
+  | 'dialysisClinic'
+  | 'socialWorker',
+  string
+>>;
+
+type SocialWorker = {
+  id: string;
+  fullName: string;
+};
+
+type ConsentSectionData = {
+  heading: string;
+  paragraphs?: string[];
+  bullets?: string[];
+  numbered?: Array<{ label: string; text: string }>;
+  checkItems?: string[];
+};
+
+const PRIMARY = '#3399e6';
+const PRIMARY_DARK = '#1a66cc';
+const SAVED_USERNAME_KEY = 'mobile_prototype_saved_username';
+const MOCK_TODOS: MockTodo[] = [
+  {
+    id: 'todo-1',
+    title: 'Upload Government ID',
+    description: 'Upload a clear photo of the front side only.',
+    status: 'pending',
+    priority: 'high',
+    type: 'governmentIdUpload',
+  },
+  {
+    id: 'todo-2',
+    title: 'Upload Insurance Card',
+    description: 'Upload clear photos of both front and back.',
+    status: 'pending',
+    priority: 'medium',
+    type: 'insuranceCardUpload',
+  },
+  {
+    id: 'todo-3',
+    title: 'Complete Health Questionnaire',
+    description: 'Answer required transplant eligibility questions.',
+    status: 'pending',
+    priority: 'low',
+    type: 'healthQuestionnaire',
+  },
+];
+
+const CARE_PARTNER_TODO_TEMPLATE: MockTodo = {
+  id: 'todo-care-partner',
+  title: 'Add Emergency Contact',
+  description: 'Invite an emergency contact to receive notifications and limited case status.',
+  status: 'pending',
+  priority: 'low',
+  type: 'carePartnerInvite',
+};
+
+function createInitialTodos() {
+  return MOCK_TODOS.map((todo) => ({ ...todo }));
+}
+
+const QUESTIONNAIRE_MONTH_OPTIONS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+const QUESTIONNAIRE_YEAR_OPTIONS = Array.from({ length: 60 }, (_, index) => `${new Date().getFullYear() - index}`);
+const QUESTIONNAIRE_HEIGHT_FEET_OPTIONS = ['3', '4', '5', '6', '7'];
+const QUESTIONNAIRE_HEIGHT_INCH_OPTIONS = Array.from({ length: 12 }, (_, index) => `${index}`);
+
+const QUICK_HELP_CHIPS: QuickHelpChipData[] = [
+  { id: 'wait-times', title: 'Wait times', icon: Clock3 },
+  { id: 'centers', title: 'Center locations', icon: MapPin },
+  { id: 'documents', title: 'Required documents', icon: FileText },
+  { id: 'process', title: 'The process', icon: Heart },
+];
+
+const INITIAL_ASSISTANT_MESSAGES: AssistantMessage[] = [
+  {
+    id: 'assistant-1',
+    role: 'assistant',
+    content:
+      "Hi! I'm Amelia, your Virtual Transplant Assistant. Start with your Home To-Do List and complete pending tasks in order.",
+    timestampLabel: '9:14 AM',
+    navigationLabel: 'Go to To-Do List',
+  },
+];
+
+const INITIAL_CARE_THREADS: CareThread[] = [
+  {
+    id: 'thread-sw',
+    subject: 'Lab Panel Follow-up',
+    participantName: 'Sarah Johnson',
+    participantRole: 'dusw',
+    participantOrganization: 'Riverside Dialysis Unit',
+    previewText: 'I can confirm which labs are still needed and share locations today.',
+    relativeTimeLabel: '12m',
+    unreadCount: 1,
+    messages: [
+      {
+        id: 'sw-1',
+        senderName: 'Sarah Johnson',
+        senderRole: 'dusw',
+        body: 'Hi Jeremy, I reviewed your chart this morning.',
+        timestampLabel: '8:41 AM',
+        isRead: true,
+      },
+      {
+        id: 'sw-2',
+        senderName: 'You',
+        senderRole: 'patient',
+        body: 'Thanks. Can you confirm what labs are still outstanding for transplant workup?',
+        timestampLabel: '8:45 AM',
+        isRead: true,
+      },
+      {
+        id: 'sw-3',
+        senderName: 'Sarah Johnson',
+        senderRole: 'dusw',
+        body:
+          'Yes. You still need repeat HLA and updated hepatitis panel. I can send two nearby lab options and available hours.',
+        timestampLabel: '8:49 AM',
+        isRead: false,
+      },
+    ],
+  },
+  {
+    id: 'thread-penn',
+    subject: 'Cardiology Consult Scheduling',
+    participantName: 'Jamie Chen',
+    participantRole: 'tc_employee',
+    participantOrganization: 'Penn Medicine Transplant Center',
+    previewText: 'Monday at 10:30 AM is open. Would you like me to reserve it?',
+    relativeTimeLabel: '1h',
+    unreadCount: 2,
+    messages: [
+      {
+        id: 'penn-1',
+        senderName: 'Jamie Chen',
+        senderRole: 'tc_employee',
+        body: 'Your cardiology consult order has been received.',
+        timestampLabel: '7:55 AM',
+        isRead: true,
+      },
+      {
+        id: 'penn-2',
+        senderName: 'You',
+        senderRole: 'patient',
+        body: 'Great. What is your soonest available slot next week?',
+        timestampLabel: '8:02 AM',
+        isRead: true,
+      },
+      {
+        id: 'penn-3',
+        senderName: 'Jamie Chen',
+        senderRole: 'tc_employee',
+        body: 'Monday at 10:30 AM is open. Would you like me to reserve it?',
+        timestampLabel: '8:07 AM',
+        isRead: false,
+      },
+      {
+        id: 'penn-4',
+        senderName: 'Jamie Chen',
+        senderRole: 'tc_employee',
+        body: 'Please also bring your current medication list and insurance card.',
+        timestampLabel: '8:08 AM',
+        isRead: false,
+      },
+    ],
+  },
+  {
+    id: 'thread-hopkins',
+    subject: 'CT Scan Result Upload',
+    participantName: 'Luis Martinez',
+    participantRole: 'tc_employee',
+    participantOrganization: 'Johns Hopkins Transplant Program',
+    previewText: 'Uploaded file received. We will post your review notes by tomorrow.',
+    relativeTimeLabel: '1d',
+    unreadCount: 0,
+    messages: [
+      {
+        id: 'hopkins-1',
+        senderName: 'You',
+        senderRole: 'patient',
+        body: 'I uploaded my CT scan report to Documents. Can you confirm receipt?',
+        timestampLabel: 'Yesterday, 2:12 PM',
+        isRead: true,
+      },
+      {
+        id: 'hopkins-2',
+        senderName: 'Luis Martinez',
+        senderRole: 'tc_employee',
+        body: 'Received. Thank you. We will share your review notes by tomorrow afternoon.',
+        timestampLabel: 'Yesterday, 2:36 PM',
+        isRead: true,
+      },
+    ],
+  },
+];
+
+const TITLE_OPTIONS = ['', 'Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Prof.'];
+const DIALYSIS_CLINICS = [
+  '',
+  'Metro Health Dialysis Center',
+  'Lakeside Renal Unit',
+  'Grand River Kidney Care',
+  'University Hospital Dialysis',
+  'Community Dialysis Center',
+  'Regional Kidney Care',
+];
+
+const SOCIAL_WORKERS_BY_CLINIC: Record<string, SocialWorker[]> = {
+  'Metro Health Dialysis Center': [
+    { id: 'sw-metro-1', fullName: 'Sarah Johnson' },
+    { id: 'sw-metro-2', fullName: 'Alex Rivera' },
+  ],
+  'Lakeside Renal Unit': [
+    { id: 'sw-lake-1', fullName: 'Jamie Lee' },
+    { id: 'sw-lake-2', fullName: 'Morgan Patel' },
+  ],
+  'Grand River Kidney Care': [
+    { id: 'sw-grand-1', fullName: 'Taylor Brooks' },
+    { id: 'sw-grand-2', fullName: 'Jordan Kim' },
+  ],
+  'University Hospital Dialysis': [
+    { id: 'sw-uh-1', fullName: 'Avery Thomas' },
+    { id: 'sw-uh-2', fullName: 'Casey Nguyen' },
+  ],
+  'Community Dialysis Center': [
+    { id: 'sw-community-1', fullName: 'Riley Martinez' },
+    { id: 'sw-community-2', fullName: 'Drew Campbell' },
+  ],
+  'Regional Kidney Care': [
+    { id: 'sw-regional-1', fullName: 'Quinn Harris' },
+    { id: 'sw-regional-2', fullName: 'Logan Foster' },
+  ],
+};
+
+const SERVICES_CONSENT_SECTIONS: ConsentSectionData[] = [
+  {
+    heading: 'INTRODUCTION',
+    paragraphs: [
+      'This document constitutes an agreement between you (the "Patient") and Transplant Wizard, LLC ("Transplant Wizard," "we," "us," or "our") regarding the use of our transplant coordination and referral services.',
+    ],
+  },
+  {
+    heading: 'DESCRIPTION OF SERVICES',
+    paragraphs: [
+      'Transplant Wizard provides a digital platform designed to assist patients in navigating the kidney transplant referral process. Our services include:',
+    ],
+    bullets: [
+      'Facilitating communication between patients, dialysis social workers, and transplant centers',
+      'Secure document collection and transmission',
+      'Transplant center selection assistance',
+      'Care coordination and progress tracking',
+      'Educational resources about the transplant process',
+    ],
+  },
+  {
+    heading: 'IMPORTANT DISCLAIMERS',
+    paragraphs: ['By using Transplant Wizard services, you acknowledge and understand that:'],
+    numbered: [
+      {
+        label: '1.',
+        text: 'Transplant Wizard does NOT provide medical advice, diagnosis, or treatment. We are a coordination service only.',
+      },
+      {
+        label: '2.',
+        text: 'All medical decisions regarding your transplant care should be made in consultation with your healthcare providers.',
+      },
+      {
+        label: '3.',
+        text: 'Use of our services does not guarantee acceptance by any transplant center or placement on a transplant waiting list.',
+      },
+      {
+        label: '4.',
+        text: 'You remain responsible for attending appointments and complying with transplant center requirements.',
+      },
+    ],
+  },
+  {
+    heading: 'DATA SECURITY',
+    paragraphs: [
+      'We are committed to protecting your personal health information in accordance with the Health Insurance Portability and Accountability Act (HIPAA) and applicable state laws. Your information is encrypted, securely stored, and only shared with authorized parties as specified in the Medical Records Consent Form.',
+    ],
+  },
+  {
+    heading: 'VOLUNTARY PARTICIPATION',
+    paragraphs: [
+      'Your participation in Transplant Wizard services is entirely voluntary. You may withdraw your consent and discontinue use of our services at any time by contacting us at support@transplantwizard.com. Withdrawal will not affect your eligibility for transplant evaluation through other means.',
+    ],
+  },
+  {
+    heading: 'CONSENT ACKNOWLEDGMENT',
+    paragraphs: ['By signing below, I acknowledge that:'],
+    checkItems: [
+      'I have read and understand this consent form',
+      'I voluntarily agree to use Transplant Wizard services',
+      'I understand that Transplant Wizard does not provide medical advice',
+      'I agree to the terms and conditions outlined above',
+    ],
+  },
+];
+
+const MEDICAL_CONSENT_SECTIONS: ConsentSectionData[] = [
+  {
+    heading: 'PURPOSE OF AUTHORIZATION',
+    paragraphs: [
+      'I hereby authorize the use and/or disclosure of my individually identifiable health information as described below. This authorization is made in compliance with the Health Insurance Portability and Accountability Act of 1996 (HIPAA) Privacy Rule.',
+    ],
+  },
+  {
+    heading: 'INFORMATION TO BE DISCLOSED',
+    paragraphs: ['I authorize the release of the following protected health information (PHI):'],
+    bullets: [
+      'Medical records related to kidney disease, dialysis treatment, and transplant evaluation',
+      'Laboratory results including blood tests, urinalysis, and tissue typing',
+      'Diagnostic imaging reports and results',
+      'Medication lists and pharmacy records',
+      'Clinical notes and physician summaries',
+      'Social work assessments and psychosocial evaluations',
+      'Insurance and financial clearance documentation',
+      'Immunization records',
+    ],
+  },
+  {
+    heading: 'AUTHORIZED PARTIES',
+    paragraphs: ['I authorize disclosure of my PHI to and from the following parties:'],
+    numbered: [
+      {
+        label: '1.',
+        text: 'Transplant Centers: Selected transplant programs for evaluation and listing purposes',
+      },
+      {
+        label: '2.',
+        text: 'Dialysis Unit Social Workers (DUSW): For care coordination and document management',
+      },
+      {
+        label: '3.',
+        text: 'Healthcare Providers: Physicians, specialists, and care teams involved in my transplant evaluation',
+      },
+      {
+        label: '4.',
+        text: 'Transplant Wizard: For secure transmission and coordination of medical information',
+      },
+    ],
+  },
+  {
+    heading: 'DURATION OF AUTHORIZATION',
+    paragraphs: [
+      'This authorization shall remain in effect for a period of twenty-four (24) months from the date of signature, unless revoked earlier in writing by the patient or patient\'s legal representative.',
+    ],
+  },
+  {
+    heading: 'RIGHT TO REVOKE',
+    paragraphs: [
+      'I understand that I have the right to revoke this authorization at any time by submitting a written request to Transplant Wizard at support@transplantwizard.com. I understand that revocation will not affect any actions taken in reliance on this authorization prior to receipt of my written revocation.',
+    ],
+  },
+  {
+    heading: 'REDISCLOSURE NOTICE',
+    paragraphs: [
+      'I understand that once my health information is disclosed pursuant to this authorization, it may no longer be protected by federal privacy regulations and could potentially be redisclosed by the recipient.',
+    ],
+  },
+  {
+    heading: 'VOLUNTARY AUTHORIZATION',
+    paragraphs: ['I understand that:'],
+    checkItems: [
+      'This authorization is voluntary',
+      'I may refuse to sign this authorization',
+      'My treatment will not be conditioned on signing this authorization',
+      'I am entitled to receive a copy of this signed authorization',
+    ],
+  },
+  {
+    heading: 'ACKNOWLEDGMENT',
+    paragraphs: [
+      'By signing below, I certify that I have read and understand this Authorization for Release of Protected Health Information, and I voluntarily consent to the disclosure of my health information as described herein.',
+    ],
+  },
+];
+
+const SIMULATED_SIGNATURE_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="90" viewBox="0 0 320 90">
+     <rect width="320" height="90" fill="#f8fafc"/>
+     <path d="M22 64 C45 18, 80 86, 116 34 C133 12, 168 74, 205 30 C228 5, 267 78, 298 26" stroke="#111827" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+     <text x="24" y="83" font-size="11" fill="#64748b" font-family="Arial, sans-serif">/s/ Jeremy Rolls</text>
+   </svg>`
+)}`;
+
+const APP_TABS: Array<{
+  id: AppTab;
+  title: string;
+  icon: ComponentType<{ className?: string }>;
+}> = [
+  { id: 'home', title: 'Home', icon: House },
+  { id: 'careTeam', title: 'Care Team', icon: Users },
+  { id: 'profile', title: 'Profile', icon: UserRound },
+  { id: 'help', title: 'Help', icon: CircleHelp },
+];
+
+export default function MobilePrototypePage() {
+  const [rememberedUsername] = useState(() =>
+    typeof window === 'undefined' ? '' : (window.localStorage.getItem(SAVED_USERNAME_KEY) ?? '')
+  );
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>('entry');
+  const [entryAuthTab, setEntryAuthTab] = useState<EntryAuthTab>('register');
+  const [username, setUsername] = useState(rememberedUsername);
+  const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(rememberedUsername.length > 0);
+  const [showPassword, setShowPassword] = useState(false);
+  const [registeredDisplayName, setRegisteredDisplayName] = useState('Jeremy Rolls');
+  const [registeredEmail, setRegisteredEmail] = useState(rememberedUsername);
+  const [justRegistered, setJustRegistered] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<AppTab>('home');
+  const [careTeamIntent, setCareTeamIntent] = useState<CareTeamIntent>(null);
+  const [displayName, setDisplayName] = useState('Jeremy Rolls');
+  const [showCoordinatorIntro, setShowCoordinatorIntro] = useState(false);
+  const [todos, setTodos] = useState<MockTodo[]>(() => createInitialTodos());
+
+  const topBarTitleByTab: Record<AppTab, string> = {
+    home: 'Home',
+    careTeam: 'Care Team',
+    profile: 'Profile',
+    help: 'Help',
+  };
+
+  const canSubmitLogin = username.trim().length > 0 && password.trim().length > 0;
+  const pendingTodos = useMemo(() => todos.filter((todo) => todo.status === 'pending'), [todos]);
+  const completedTodos = useMemo(() => todos.filter((todo) => todo.status === 'completed'), [todos]);
+
+  function deriveDisplayName(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return 'Jeremy Rolls';
+    const candidate = trimmed.includes('@') ? trimmed.split('@')[0] : trimmed;
+    return candidate
+      .replace(/[._-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  function handleSignIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canSubmitLogin) return;
+
+    if (rememberMe) {
+      window.localStorage.setItem(SAVED_USERNAME_KEY, username.trim());
+    } else {
+      window.localStorage.removeItem(SAVED_USERNAME_KEY);
+    }
+
+    setDisplayName(registeredDisplayName || deriveDisplayName(username));
+    setOnboardingStep('servicesConsent');
+    setActiveTab('home');
+    setShowCoordinatorIntro(true);
+    setPassword('');
+    setJustRegistered(false);
+  }
+
+  function handleRegistrationComplete(payload: RegistrationPayload) {
+    setRegisteredDisplayName(payload.displayName);
+    setRegisteredEmail(payload.email);
+    setUsername(payload.email);
+    setPassword('');
+    setShowPassword(false);
+    setEntryAuthTab('login');
+    setOnboardingStep('entry');
+    setJustRegistered(true);
+  }
+
+  function handleSignOut() {
+    setOnboardingStep('entry');
+    setEntryAuthTab('login');
+    setUsername(registeredEmail);
+    setPassword('');
+    setActiveTab('home');
+    setCareTeamIntent(null);
+    setShowCoordinatorIntro(false);
+    setTodos(createInitialTodos());
+  }
+
+  function handleTodoComplete(todoId: string) {
+    setTodos((previous) =>
+      previous.map((todo) => (todo.id === todoId ? { ...todo, status: 'completed' } : todo))
+    );
+  }
+
+  function handleOpenUnreadMessage() {
+    setActiveTab('careTeam');
+    setCareTeamIntent('openFirstUnread');
+  }
+
+  function addCarePartnerTodoIfMissing() {
+    setTodos((previous) => {
+      if (previous.some((todo) => todo.type === 'carePartnerInvite')) {
+        return previous;
+      }
+      return [{ ...CARE_PARTNER_TODO_TEMPLATE }, ...previous];
+    });
+  }
+
+  function clearCarePartnerTodo() {
+    setTodos((previous) => previous.filter((todo) => todo.type !== 'carePartnerInvite'));
+  }
+
+  return (
+    <div className="min-h-[100dvh] bg-[#f0f5fb] sm:p-6">
+      <div className="mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden bg-[#f4f7fb] sm:h-[880px] sm:rounded-[34px] sm:shadow-[0_28px_60px_rgba(15,23,42,0.24)]">
+        {onboardingStep !== 'app' ? (
+          <>
+            {onboardingStep === 'entry' && (
+              <EntryAuthScreen
+                authTab={entryAuthTab}
+                canSubmit={canSubmitLogin}
+                justRegistered={justRegistered}
+                onAuthTabChange={setEntryAuthTab}
+                onCreateAccount={handleRegistrationComplete}
+                onSignIn={handleSignIn}
+                password={password}
+                prefilledEmail={registeredEmail}
+                rememberMe={rememberMe}
+                setPassword={setPassword}
+                setRememberMe={setRememberMe}
+                setShowPassword={setShowPassword}
+                setUsername={setUsername}
+                showPassword={showPassword}
+                username={username}
+              />
+            )}
+            {onboardingStep === 'servicesConsent' && (
+              <ServicesConsentScreen onComplete={() => setOnboardingStep('medicalRecordsConsent')} />
+            )}
+            {onboardingStep === 'medicalRecordsConsent' && (
+              <MedicalRecordsConsentScreen onComplete={() => setOnboardingStep('carePartnerPrompt')} />
+            )}
+            {onboardingStep === 'carePartnerPrompt' && (
+              <CarePartnerPromptScreen
+                onInvite={() => {
+                  clearCarePartnerTodo();
+                  setOnboardingStep('app');
+                }}
+                onSkip={() => {
+                  addCarePartnerTodoIfMissing();
+                  setOnboardingStep('app');
+                }}
+              />
+            )}
+          </>
+        ) : (
+          <div className="relative flex min-h-0 flex-1 flex-col bg-[#f4f7fb]">
+            <header className="flex items-center justify-between border-b border-[#e3ebf5] bg-white px-4 py-4">
+              <button
+                type="button"
+                className="relative rounded-full border border-[#dde7f2] p-2 text-slate-700"
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+                <span className="absolute -right-1 -top-1 rounded-full bg-[#ef4444] px-1.5 text-[10px] font-bold text-white">
+                  3
+                </span>
+              </button>
+
+              <h1 className="text-base font-semibold text-slate-900">{topBarTitleByTab[activeTab]}</h1>
+
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="rounded-full border border-[#dde7f2] px-3 py-1 text-xs font-semibold text-slate-600"
+              >
+                Sign Out
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5">
+              {activeTab === 'home' && (
+                <HomeTab
+                  completedTodos={completedTodos}
+                  displayName={displayName}
+                  onCompleteTodo={handleTodoComplete}
+                  onOpenUnreadMessage={handleOpenUnreadMessage}
+                  pendingTodos={pendingTodos}
+                />
+              )}
+              {activeTab === 'careTeam' && (
+                <CareTeamTab
+                  intent={careTeamIntent}
+                  onGoToTodoList={() => {
+                    setActiveTab('home');
+                    setCareTeamIntent(null);
+                  }}
+                />
+              )}
+              {activeTab === 'profile' && <ProfileTab displayName={displayName} username={username} />}
+              {activeTab === 'help' && <HelpTab />}
+            </div>
+
+            <nav className="absolute bottom-0 left-0 right-0 border-t border-[#dce7f2] bg-white px-2 py-2">
+              <ul className="grid grid-cols-4 gap-1">
+                {APP_TABS.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = tab.id === activeTab;
+
+                  return (
+                    <li key={tab.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(tab.id);
+                          if (tab.id !== 'careTeam') setCareTeamIntent(null);
+                        }}
+                        className={`flex w-full flex-col items-center gap-1 rounded-xl py-2 ${
+                          isActive ? 'bg-[#eaf4fc] text-[#1a66cc]' : 'text-slate-500'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="text-[10px] font-semibold leading-none">{tab.title}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+
+            {showCoordinatorIntro && (
+              <CoordinatorIntroOverlay
+                displayName={displayName}
+                onContinue={() => {
+                  setShowCoordinatorIntro(false);
+                  setActiveTab('careTeam');
+                }}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type EntryAuthScreenProps = {
+  authTab: EntryAuthTab;
+  canSubmit: boolean;
+  justRegistered: boolean;
+  onAuthTabChange: (tab: EntryAuthTab) => void;
+  onCreateAccount: (payload: RegistrationPayload) => void;
+  onSignIn: (event: FormEvent<HTMLFormElement>) => void;
+  password: string;
+  prefilledEmail: string;
+  rememberMe: boolean;
+  setPassword: (value: string) => void;
+  setRememberMe: (value: boolean) => void;
+  setShowPassword: (value: boolean | ((prev: boolean) => boolean)) => void;
+  setUsername: (value: string) => void;
+  showPassword: boolean;
+  username: string;
+};
+
+function EntryAuthScreen({
+  authTab,
+  canSubmit,
+  justRegistered,
+  onAuthTabChange,
+  onCreateAccount,
+  onSignIn,
+  password,
+  prefilledEmail,
+  rememberMe,
+  setPassword,
+  setRememberMe,
+  setShowPassword,
+  setUsername,
+  showPassword,
+  username,
+}: EntryAuthScreenProps) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-gradient-to-br from-[#f2f7ff] via-[#ecf3ff] to-[#e2edf8] px-5 pb-6 pt-10">
+      <div className="mb-7 mt-3 flex flex-col items-center gap-3 text-center">
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#3399e6] shadow-[0_10px_24px_rgba(51,153,230,0.35)]">
+          <Heart className="h-10 w-10 fill-white text-white" />
+        </div>
+        <div>
+          <h1 className="text-[31px] font-bold tracking-tight text-slate-900">Patient Portal</h1>
+          <p className="mt-1 text-sm text-slate-500">Your journey to a new beginning</p>
+        </div>
+      </div>
+
+      <div className="mb-4 rounded-full bg-white p-1 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            type="button"
+            onClick={() => onAuthTabChange('login')}
+            className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${
+              authTab === 'login' ? 'bg-[#3399e6] text-white' : 'text-slate-500'
+            }`}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => onAuthTabChange('register')}
+            className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${
+              authTab === 'register' ? 'bg-[#3399e6] text-white' : 'text-slate-500'
+            }`}
+          >
+            Register
+          </button>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-hidden rounded-[24px] bg-white/95 p-4 shadow-[0_20px_40px_rgba(15,23,42,0.11)]">
+        {authTab === 'login' ? (
+          <LoginScreen
+            canSubmit={canSubmit}
+            justRegistered={justRegistered}
+            onSignIn={onSignIn}
+            password={password}
+            prefilledEmail={prefilledEmail}
+            rememberMe={rememberMe}
+            setPassword={setPassword}
+            setRememberMe={setRememberMe}
+            setShowPassword={setShowPassword}
+            setUsername={setUsername}
+            showPassword={showPassword}
+            username={username}
+          />
+        ) : (
+          <RegistrationScreen onCreateAccount={onCreateAccount} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+type LoginScreenProps = {
+  canSubmit: boolean;
+  justRegistered: boolean;
+  onSignIn: (event: FormEvent<HTMLFormElement>) => void;
+  password: string;
+  prefilledEmail: string;
+  rememberMe: boolean;
+  setPassword: (value: string) => void;
+  setRememberMe: (value: boolean) => void;
+  setShowPassword: (value: boolean | ((prev: boolean) => boolean)) => void;
+  setUsername: (value: string) => void;
+  showPassword: boolean;
+  username: string;
+};
+
+function LoginScreen({
+  canSubmit,
+  justRegistered,
+  onSignIn,
+  password,
+  prefilledEmail,
+  rememberMe,
+  setPassword,
+  setRememberMe,
+  setShowPassword,
+  setUsername,
+  showPassword,
+  username,
+}: LoginScreenProps) {
+  return (
+    <div className="h-full overflow-y-auto pr-1">
+      {justRegistered && (
+        <div className="mb-4 rounded-xl bg-[#edf5ff] px-3 py-2 text-xs text-[#2a6ead]">
+          Account created. Sign in using the email you registered with.
+        </div>
+      )}
+      {!justRegistered && prefilledEmail && (
+        <div className="mb-4 rounded-xl bg-[#edf5ff] px-3 py-2 text-xs text-[#2a6ead]">
+          Continue with your registered account.
+        </div>
+      )}
+
+      <form className="space-y-4" onSubmit={onSignIn}>
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email Address</span>
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="Enter your email"
+                className="h-11 w-full rounded-xl border border-[#d8e4f1] pl-10 pr-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+              />
+            </div>
+          </label>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Password</span>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Enter your password"
+                className="h-11 w-full rounded-xl border border-[#d8e4f1] pl-10 pr-11 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </label>
+
+          <div className="flex items-center justify-between text-xs">
+            <button
+              type="button"
+              onClick={() => setRememberMe(!rememberMe)}
+              className="inline-flex items-center gap-2 text-slate-600"
+            >
+              <span
+                className={`flex h-4 w-4 items-center justify-center rounded border ${
+                  rememberMe ? 'border-[#3399e6] bg-[#3399e6] text-white' : 'border-slate-300 text-transparent'
+                }`}
+              >
+                ✓
+              </span>
+              Remember me
+            </button>
+            <button type="button" className="font-medium text-[#1a66cc]">
+              Forgot Password?
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className={`mt-2 inline-flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition ${
+              canSubmit ? 'bg-[#3399e6] shadow-[0_10px_24px_rgba(51,153,230,0.35)]' : 'bg-slate-300'
+            }`}
+          >
+            Sign In
+          </button>
+      </form>
+    </div>
+  );
+}
+
+function RegistrationScreen({ onCreateAccount }: { onCreateAccount: (payload: RegistrationPayload) => void }) {
+  const [selectedTitleIndex, setSelectedTitleIndex] = useState(0);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [address, setAddress] = useState('');
+  const [primaryCarePhysician, setPrimaryCarePhysician] = useState('');
+  const [insuranceProvider, setInsuranceProvider] = useState('');
+  const [nephrologist, setNephrologist] = useState('');
+  const [selectedDialysisClinic, setSelectedDialysisClinic] = useState(0);
+  const [selectedSocialWorker, setSelectedSocialWorker] = useState(0);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<RegistrationErrors>({});
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const selectedClinicName = DIALYSIS_CLINICS[selectedDialysisClinic] ?? '';
+  const availableWorkers = selectedClinicName ? SOCIAL_WORKERS_BY_CLINIC[selectedClinicName] ?? [] : [];
+
+  const passwordChecks = {
+    minLength: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+    symbol: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
+  };
+
+  function isValidEmail(value: string) {
+    return /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value);
+  }
+
+  function validateForm() {
+    const errors: RegistrationErrors = {};
+
+    if (!firstName.trim()) errors.firstName = 'First name is required';
+    if (!lastName.trim()) errors.lastName = 'Last name is required';
+    if (!email.trim()) {
+      errors.email = 'Email address is required';
+    } else if (!isValidEmail(email.trim())) {
+      errors.email = 'Please enter a valid email address';
+    }
+    if (!password) {
+      errors.password = 'Password is required';
+    } else if (!Object.values(passwordChecks).every(Boolean)) {
+      errors.password = 'Password must meet all requirements';
+    }
+    if (confirmPassword !== password) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+    if (selectedDialysisClinic === 0) {
+      errors.dialysisClinic = 'Please select your dialysis clinic';
+    }
+    if (selectedDialysisClinic > 0 && selectedSocialWorker === 0) {
+      errors.socialWorker = 'Please select your assigned social worker';
+    }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setErrorMessage('Please correct the errors below');
+      return false;
+    }
+
+    setErrorMessage('');
+    return true;
+  }
+
+  function handleCreateAccount() {
+    if (!validateForm()) return;
+
+    setIsLoading(true);
+    window.setTimeout(() => {
+      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+      setIsLoading(false);
+      onCreateAccount({
+        displayName: fullName || 'Jeremy Rolls',
+        email: email.trim(),
+      });
+    }, 700);
+  }
+
+  return (
+    <div className="h-full overflow-y-auto pr-1">
+      <div className="space-y-5 pb-2">
+        <div className="space-y-1 text-center">
+          <h2 className="text-2xl font-bold text-slate-900">Create Your Account</h2>
+          <p className="text-sm text-slate-500">Join our HIPAA-compliant transplant platform</p>
+        </div>
+
+        {errorMessage && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {errorMessage}
+          </div>
+        )}
+
+        <RegistrationSection icon={UserRound} title="Personal Information">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-slate-700">Title</span>
+            <select
+              value={selectedTitleIndex}
+              onChange={(event) => setSelectedTitleIndex(Number(event.target.value))}
+              className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+            >
+              {TITLE_OPTIONS.map((title, index) => (
+                <option key={`${title}-${index}`} value={index}>
+                  {title || 'Select title'}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <RegistrationInput
+            label="First Name *"
+            value={firstName}
+            onChange={setFirstName}
+            placeholder="Enter your first name"
+            error={fieldErrors.firstName}
+          />
+          <RegistrationInput
+            label="Last Name *"
+            value={lastName}
+            onChange={setLastName}
+            placeholder="Enter your last name"
+            error={fieldErrors.lastName}
+          />
+
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-slate-700">Date of Birth</span>
+            <div className="relative">
+              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="date"
+                value={dateOfBirth}
+                onChange={(event) => setDateOfBirth(event.target.value)}
+                max={new Date().toISOString().split('T')[0]}
+                className="h-11 w-full rounded-lg bg-[#f0f3f7] pl-10 pr-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+              />
+            </div>
+          </label>
+        </RegistrationSection>
+
+          <RegistrationSection icon={Phone} title="Contact Information">
+            <RegistrationInput
+              label="Email Address *"
+              value={email}
+              onChange={setEmail}
+              placeholder="Enter your email address"
+              error={fieldErrors.email}
+            />
+            <RegistrationInput
+              label="Phone Number"
+              value={phoneNumber}
+              onChange={setPhoneNumber}
+              placeholder="+1 (555) 123-4567"
+            />
+            <RegistrationTextArea
+              label="Address"
+              value={address}
+              onChange={setAddress}
+              placeholder="Enter your home address"
+            />
+          </RegistrationSection>
+
+          <RegistrationSection icon={HeartPulse} title="Medical Information (Optional)">
+            <RegistrationInput
+              label="Primary Care Physician"
+              value={primaryCarePhysician}
+              onChange={setPrimaryCarePhysician}
+              placeholder="Dr. John Smith"
+            />
+            <RegistrationInput
+              label="Insurance Provider"
+              value={insuranceProvider}
+              onChange={setInsuranceProvider}
+              placeholder="Blue Cross Blue Shield"
+            />
+            <RegistrationInput
+              label="Nephrologist"
+              value={nephrologist}
+              onChange={setNephrologist}
+              placeholder="Dr. Jane Doe"
+            />
+
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-slate-700">Dialysis Clinic *</span>
+              <select
+                value={selectedDialysisClinic}
+                onChange={(event) => {
+                  setSelectedDialysisClinic(Number(event.target.value));
+                  setSelectedSocialWorker(0);
+                }}
+                className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+              >
+                {DIALYSIS_CLINICS.map((clinic, index) => (
+                  <option key={`${clinic}-${index}`} value={index}>
+                    {clinic || 'Select your dialysis clinic'}
+                  </option>
+                ))}
+              </select>
+              <FieldError message={fieldErrors.dialysisClinic} />
+            </label>
+
+            {selectedDialysisClinic > 0 && (
+              <label className="block space-y-1.5">
+                <span className="text-sm font-medium text-slate-700">Assigned Social Worker *</span>
+                <select
+                  value={selectedSocialWorker}
+                  onChange={(event) => setSelectedSocialWorker(Number(event.target.value))}
+                  className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+                >
+                  <option value={0}>Select your social worker</option>
+                  {availableWorkers.map((worker, index) => (
+                    <option key={worker.id} value={index + 1}>
+                      {worker.fullName}
+                    </option>
+                  ))}
+                </select>
+                <FieldError message={fieldErrors.socialWorker} />
+              </label>
+            )}
+          </RegistrationSection>
+
+          <RegistrationSection icon={Lock} title="Account Security">
+            <RegistrationSecureInput
+              label="Password *"
+              value={password}
+              onChange={setPassword}
+              placeholder="Create a secure password"
+              showPassword={showPassword}
+              setShowPassword={setShowPassword}
+              error={fieldErrors.password}
+            />
+            <RegistrationSecureInput
+              label="Confirm Password *"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              placeholder="Confirm your password"
+              showPassword={showConfirmPassword}
+              setShowPassword={setShowConfirmPassword}
+              error={fieldErrors.confirmPassword}
+            />
+
+            <div className="space-y-1 pt-1">
+              <p className="text-xs font-semibold text-slate-500">Password Requirements:</p>
+              <PasswordRequirement met={passwordChecks.minLength} text="At least 8 characters" />
+              <PasswordRequirement met={passwordChecks.uppercase} text="Uppercase letter" />
+              <PasswordRequirement met={passwordChecks.lowercase} text="Lowercase letter" />
+              <PasswordRequirement met={passwordChecks.number} text="Number" />
+              <PasswordRequirement met={passwordChecks.symbol} text="Special character (!@#$%^&*)" />
+            </div>
+          </RegistrationSection>
+
+          <button
+            type="button"
+            onClick={handleCreateAccount}
+            disabled={isLoading}
+            className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#3399e6] to-[#1f83d2] text-sm font-semibold text-white shadow-[0_8px_18px_rgba(51,153,230,0.32)] disabled:opacity-60"
+          >
+            {isLoading ? 'Creating Account...' : 'Create Account'}
+          </button>
+
+        <div className="pb-1 text-center">
+          <p className="text-[11px] text-slate-500">By creating an account, you agree to our Terms of Service and Privacy Policy.</p>
+          <p className="mt-2 text-[11px] text-emerald-600">Your data is HIPAA compliant and secure.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RegistrationSection({
+  children,
+  icon: Icon,
+  title,
+}: {
+  children: ReactNode;
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+}) {
+  return (
+    <section className="rounded-xl bg-white p-4 shadow-[0_6px_16px_rgba(15,23,42,0.08)]">
+      <div className="mb-3 flex items-center gap-2">
+        <Icon className="h-4 w-4 text-[#3399e6]" />
+        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+function RegistrationInput({
+  error,
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  error?: string;
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+      />
+      <FieldError message={error} />
+    </label>
+  );
+}
+
+function RegistrationTextArea({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        rows={3}
+        className="w-full rounded-lg bg-[#f0f3f7] px-3 py-2 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+      />
+    </label>
+  );
+}
+
+function RegistrationSecureInput({
+  error,
+  label,
+  onChange,
+  placeholder,
+  setShowPassword,
+  showPassword,
+  value,
+}: {
+  error?: string;
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  setShowPassword: (value: boolean | ((previous: boolean) => boolean)) => void;
+  showPassword: boolean;
+  value: string;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <div className="relative">
+        <input
+          type={showPassword ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 pr-10 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+        />
+        <button
+          type="button"
+          onClick={() => setShowPassword((previous) => !previous)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+          aria-label={showPassword ? 'Hide password' : 'Show password'}
+        >
+          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
+      <FieldError message={error} />
+    </label>
+  );
+}
+
+function PasswordRequirement({ met, text }: { met: boolean; text: string }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs">
+      {met ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Circle className="h-3.5 w-3.5 text-slate-400" />}
+      <span className={met ? 'text-emerald-600' : 'text-slate-500'}>{text}</span>
+    </div>
+  );
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-xs text-red-600">{message}</p>;
+}
+
+function ServicesConsentScreen({ onComplete }: { onComplete: () => void }) {
+  return (
+    <ConsentDocumentScreen
+      navigationTitle="Services Consent"
+      headerIcon={Cross}
+      documentTitleLines={['CONSENT FOR TRANSPLANT WIZARD SERVICES']}
+      documentTitleRuleWidth={200}
+      sections={SERVICES_CONSENT_SECTIONS}
+      agreementText="I have read, understand, and agree to the terms of this Consent for Transplant Wizard Services."
+      submitLabel="I Agree & Continue"
+      onComplete={onComplete}
+    />
+  );
+}
+
+function MedicalRecordsConsentScreen({ onComplete }: { onComplete: () => void }) {
+  return (
+    <ConsentDocumentScreen
+      navigationTitle="Medical Records Authorization"
+      headerIcon={FileText}
+      documentTitleLines={['AUTHORIZATION FOR RELEASE', 'OF PROTECTED HEALTH INFORMATION']}
+      documentTitleRuleWidth={280}
+      documentSubtitle="HIPAA COMPLIANT • 45 CFR § 164.508"
+      sections={MEDICAL_CONSENT_SECTIONS}
+      agreementText="I authorize the release of my protected health information as described above and understand my rights regarding this authorization."
+      submitLabel="I Authorize & Continue"
+      footerNote="This form complies with HIPAA regulations (45 CFR Parts 160 and 164) and applicable state privacy laws."
+      onComplete={onComplete}
+    />
+  );
+}
+
+function CarePartnerPromptScreen({
+  onInvite,
+  onSkip,
+}: {
+  onInvite: (payload: CarePartnerInvitePayload) => void;
+  onSkip: () => void;
+}) {
+  const [carePartnerName, setCarePartnerName] = useState('');
+  const [carePartnerEmail, setCarePartnerEmail] = useState('');
+  const [carePartnerPhone, setCarePartnerPhone] = useState('');
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(carePartnerEmail.trim());
+  const canInvite =
+    carePartnerName.trim().length > 0 &&
+    carePartnerPhone.trim().length > 0 &&
+    emailIsValid &&
+    consentGiven &&
+    !isSubmitting;
+
+  function handleInvite() {
+    if (!canInvite) {
+      setErrorMessage('Please complete all fields and consent before sending the invitation.');
+      return;
+    }
+
+    setErrorMessage('');
+    setIsSubmitting(true);
+    window.setTimeout(() => {
+      setIsSubmitting(false);
+      onInvite({
+        name: carePartnerName.trim(),
+        email: carePartnerEmail.trim(),
+        phone: carePartnerPhone.trim(),
+        consentGiven: true,
+      });
+    }, 600);
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-gradient-to-br from-[#f2f7ff] via-[#ecf3ff] to-[#e2edf8] px-5 pb-6 pt-10">
+      <div className="mb-6 mt-2 text-center">
+        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[#3399e6] shadow-[0_8px_20px_rgba(51,153,230,0.3)]">
+          <Users className="h-8 w-8 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900">Add an Emergency Contact (Optional)</h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          Invite someone you trust to stay informed during your transplant journey.
+        </p>
+      </div>
+
+      <div className="rounded-[24px] bg-white/95 p-4 shadow-[0_20px_40px_rgba(15,23,42,0.11)]">
+        <div className="space-y-3">
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Emergency Contact Name</span>
+            <input
+              value={carePartnerName}
+              onChange={(event) => setCarePartnerName(event.target.value)}
+              placeholder="Enter full name"
+              className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+            />
+          </label>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Emergency Contact Email</span>
+            <input
+              type="email"
+              value={carePartnerEmail}
+              onChange={(event) => setCarePartnerEmail(event.target.value)}
+              placeholder="name@example.com"
+              className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+            />
+          </label>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Emergency Contact Phone</span>
+            <input
+              type="tel"
+              value={carePartnerPhone}
+              onChange={(event) => setCarePartnerPhone(event.target.value)}
+              placeholder="(555) 123-4567"
+              className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={() => setConsentGiven((previous) => !previous)}
+            className="flex w-full items-start gap-2 rounded-xl border border-[#d8e4f1] bg-[#f8fbff] px-3 py-2.5 text-left"
+          >
+            <span
+              className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                consentGiven ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'
+              }`}
+            >
+              {consentGiven && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+            </span>
+            <span className="text-xs leading-relaxed text-slate-600">
+              I consent to this emergency contact receiving notifications and viewing limited case status.
+            </span>
+          </button>
+
+          {errorMessage && <p className="text-xs text-red-600">{errorMessage}</p>}
+
+          <button
+            type="button"
+            onClick={handleInvite}
+            disabled={!canInvite}
+            className={`inline-flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold text-white ${
+              canInvite ? 'bg-[#3399e6] shadow-[0_10px_24px_rgba(51,153,230,0.35)]' : 'bg-slate-300'
+            }`}
+          >
+            {isSubmitting ? 'Sending Invite...' : 'Invite Emergency Contact'}
+          </button>
+
+          <button
+            type="button"
+            onClick={onSkip}
+            className="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[#d8e4f1] bg-white text-sm font-semibold text-slate-600"
+          >
+            Skip For Now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ConsentDocumentScreenProps = {
+  agreementText: string;
+  documentSubtitle?: string;
+  documentTitleLines: string[];
+  documentTitleRuleWidth: number;
+  footerNote?: string;
+  headerIcon: ComponentType<{ className?: string }>;
+  navigationTitle: string;
+  onComplete: () => void;
+  sections: ConsentSectionData[];
+  submitLabel: string;
+};
+
+function ConsentDocumentScreen({
+  agreementText,
+  documentSubtitle,
+  documentTitleLines,
+  documentTitleRuleWidth,
+  footerNote,
+  headerIcon: HeaderIcon,
+  navigationTitle,
+  onComplete,
+  sections,
+  submitLabel,
+}: ConsentDocumentScreenProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [acknowledgeConsent, setAcknowledgeConsent] = useState(false);
+
+  const isFormValid = acknowledgeConsent;
+  const formattedDate = new Date().toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  function submitConsent() {
+    if (!isFormValid) {
+      setErrorMessage('Please acknowledge the consent terms to continue.');
+      return;
+    }
+
+    setErrorMessage('');
+    setIsLoading(true);
+    window.setTimeout(() => {
+      setIsLoading(false);
+      onComplete();
+    }, 700);
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-[#edf1f6]">
+      <div className="border-b border-[#dfe6ef] bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700">
+        {navigationTitle}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="space-y-4 pb-6 pt-4">
+          <div className="space-y-3 text-center">
+            <HeaderIcon className="mx-auto h-12 w-12 text-[#3380cc]" />
+            <p className="text-xs font-bold tracking-[0.24em] text-[#3380cc]">TRANSPLANT WIZARD</p>
+          </div>
+
+          <div className="mx-4 rounded-xl bg-white p-5 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
+            <div className="mb-5 text-center">
+              {documentTitleLines.map((line) => (
+                <p key={line} className="text-sm font-bold text-slate-900">
+                  {line}
+                </p>
+              ))}
+              <div className="mx-auto mt-2 h-0.5 bg-[#3380cc]" style={{ width: `${documentTitleRuleWidth}px`, maxWidth: '80%' }} />
+              {documentSubtitle && <p className="mt-2 text-[10px] font-medium text-slate-500">{documentSubtitle}</p>}
+            </div>
+
+            <div className="space-y-3">
+              {sections.map((section) => (
+                <ConsentSection key={section.heading} section={section} />
+              ))}
+            </div>
+
+            <div className="mt-4 border-t border-[#d7dde8] pt-5">
+              <h4 className="text-sm font-bold text-slate-900">PATIENT SIGNATURE</h4>
+
+              <div className="mt-3 flex items-start gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setAcknowledgeConsent((previous) => !previous)}
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                    acknowledgeConsent ? 'border-[#1f6eb3] bg-[#dbeeff]' : 'border-slate-400 bg-white'
+                  }`}
+                  aria-label="Acknowledge consent terms"
+                >
+                  {acknowledgeConsent && <Check className="h-3.5 w-3.5 text-[#1f6eb3]" strokeWidth={3.5} />}
+                </button>
+                <p className="text-xs leading-relaxed text-slate-700">{agreementText}</p>
+              </div>
+
+              <div className="mt-4">
+                <p className="mb-1 text-[11px] font-semibold text-slate-500">Signature (simulated)</p>
+                <div className="flex h-[100px] w-full items-center justify-center rounded-lg bg-[#f2f4f7] text-slate-500">
+                  <Image
+                    src={SIMULATED_SIGNATURE_DATA_URL}
+                    alt="Simulated patient signature"
+                    width={320}
+                    height={90}
+                    unoptimized
+                    className="h-[90px] w-auto object-contain"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3 text-xs text-slate-600">
+                <span className="font-semibold text-slate-500">Date:</span> {formattedDate}
+              </div>
+              {footerNote && <p className="mt-3 text-[10px] italic text-slate-500">{footerNote}</p>}
+            </div>
+          </div>
+
+          {errorMessage && <p className="px-4 text-xs text-red-600">{errorMessage}</p>}
+
+          <div className="flex justify-center px-4">
+            <button
+              type="button"
+              onClick={submitConsent}
+              disabled={!isFormValid || isLoading}
+              className={`mx-auto flex h-12 w-full max-w-[420px] items-center justify-center rounded-xl text-center text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-100 ${
+                isFormValid
+                  ? 'bg-gradient-to-r from-[#3380cc] to-[#2a6ea9] text-white shadow-[0_8px_16px_rgba(51,128,204,0.35)]'
+                  : 'border border-[#526b82] bg-[#647f99] text-white'
+              }`}
+            >
+              {isLoading ? 'Submitting...' : submitLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConsentSection({ section }: { section: ConsentSectionData }) {
+  return (
+    <section>
+      <h5 className="mb-1 text-xs font-bold text-[#3380cc]">{section.heading}</h5>
+
+      {section.paragraphs?.map((paragraph) => (
+        <p key={paragraph} className="mb-2 text-[13px] leading-relaxed text-slate-700">
+          {paragraph}
+        </p>
+      ))}
+
+      {section.bullets?.map((item) => (
+        <div key={item} className="mb-1.5 flex items-start gap-2 pl-2">
+          <span className="text-[13px] leading-5 text-slate-700">•</span>
+          <p className="text-[13px] leading-relaxed text-slate-700">{item}</p>
+        </div>
+      ))}
+
+      {section.numbered?.map((item) => (
+        <div key={`${item.label}-${item.text}`} className="mb-1.5 flex items-start gap-2 pl-2">
+          <span className="w-5 text-[13px] font-semibold leading-5 text-slate-700">{item.label}</span>
+          <p className="text-[13px] leading-relaxed text-slate-700">{item.text}</p>
+        </div>
+      ))}
+
+      {section.checkItems?.map((item) => (
+        <div key={item} className="mb-1.5 flex items-start gap-2 pl-2">
+          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+          <p className="text-[13px] leading-relaxed text-slate-700">{item}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+type HomeTabProps = {
+  completedTodos: MockTodo[];
+  displayName: string;
+  onCompleteTodo: (todoId: string) => void;
+  onOpenUnreadMessage: () => void;
+  pendingTodos: MockTodo[];
+};
+
+function HomeTab({
+  completedTodos,
+  displayName,
+  onCompleteTodo,
+  onOpenUnreadMessage,
+  pendingTodos,
+}: HomeTabProps) {
+  const [activeTodoId, setActiveTodoId] = useState<string | null>(null);
+  const activeTodo = pendingTodos.find((todo) => todo.id === activeTodoId) ?? null;
+  const unreadCareMessages = INITIAL_CARE_THREADS.reduce((total, thread) => total + thread.unreadCount, 0);
+  const unreadCareThreads = INITIAL_CARE_THREADS.filter((thread) => thread.unreadCount > 0).length;
+  const aiTipsCount = 0;
+
+  if (activeTodo) {
+    return (
+      <div className="space-y-4">
+        <TodoTaskWorkspace
+          onClose={() => setActiveTodoId(null)}
+          onComplete={() => {
+            onCompleteTodo(activeTodo.id);
+            setActiveTodoId(null);
+          }}
+          todo={activeTodo}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl bg-gradient-to-r from-[#3380cc] to-[#2a6ea9] p-4 shadow-[0_12px_24px_rgba(42,110,169,0.35)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Welcome Back</p>
+        <h2 className="mt-1 text-2xl font-bold text-white">{displayName}</h2>
+        <p className="mt-2 text-sm leading-relaxed text-blue-100">
+          You have <span className="font-semibold text-white">{pendingTodos.length}</span> pending tasks and{' '}
+          <span className="font-semibold text-white">{unreadCareMessages}</span> unread care-team messages.
+        </p>
+      </section>
+
+      <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+        <div className="mb-3 flex items-center gap-2">
+          <Mail className="h-4 w-4 text-[#3399e6]" />
+          <h3 className="text-base font-semibold text-slate-900">Messages</h3>
+          <span className="ml-auto rounded-md bg-[#eaf4fc] px-2 py-1 text-[11px] font-medium text-[#2a6ead]">
+            {unreadCareMessages} unread
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <MessageMetricCard
+            icon={Mail}
+            label="Unread"
+            value={`${unreadCareMessages}`}
+            tone="blue"
+            isInteractive
+            onClick={onOpenUnreadMessage}
+            ariaLabel="Open first unread message"
+          />
+          <MessageMetricCard
+            icon={Users}
+            label="Threads"
+            value={`${unreadCareThreads}`}
+            tone="slate"
+          />
+          <MessageMetricCard
+            icon={Brain}
+            label="AI Tips"
+            value={`${aiTipsCount}`}
+            tone="emerald"
+            isInteractive={false}
+          />
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+        <div className="mb-3 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-[#3399e6]" />
+          <h3 className="text-base font-semibold text-slate-900">To-Do List</h3>
+          <span className="ml-auto rounded-md bg-[#eef3f8] px-2 py-1 text-[11px] font-medium text-slate-500">
+            {pendingTodos.length} pending
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          {pendingTodos.map((todo) => (
+            <TodoRow
+              key={todo.id}
+              completed={false}
+              onSelectTodo={setActiveTodoId}
+              todo={todo}
+            />
+          ))}
+
+          {pendingTodos.length === 0 && (
+            <div className="rounded-xl bg-[#eef8f2] p-3 text-sm font-medium text-emerald-700">All required tasks are completed.</div>
+          )}
+
+          {completedTodos.length > 0 && (
+            <>
+              <div className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Completed</div>
+              {completedTodos.map((todo) => (
+                <TodoRow key={todo.id} todo={todo} completed />
+              ))}
+            </>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MessageMetricCard({
+  ariaLabel,
+  icon: Icon,
+  isInteractive = false,
+  label,
+  onClick,
+  tone,
+  value,
+}: {
+  ariaLabel?: string;
+  icon: ComponentType<{ className?: string }>;
+  isInteractive?: boolean;
+  label: string;
+  onClick?: () => void;
+  tone: 'blue' | 'slate' | 'emerald';
+  value: string;
+}) {
+  const toneStyles =
+    tone === 'blue'
+      ? 'bg-[#edf6ff] text-[#215f99]'
+      : tone === 'emerald'
+        ? 'bg-[#edf9f2] text-[#0f6b45]'
+        : 'bg-[#f4f7fb] text-slate-700';
+  const iconColor =
+    tone === 'blue' ? 'text-[#3380cc]' : tone === 'emerald' ? 'text-emerald-600' : 'text-slate-500';
+
+  if (isInteractive && onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={ariaLabel ?? label}
+        className={`rounded-xl p-3 text-left transition hover:brightness-[0.98] focus:outline-none focus:ring-2 focus:ring-[#b8dcfb] ${toneStyles}`}
+      >
+        <div className={`mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 ${iconColor}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <p className="text-lg font-bold leading-none">{value}</p>
+        <p className="mt-1 text-[11px] font-medium">{label}</p>
+      </button>
+    );
+  }
+
+  return (
+    <div className={`rounded-xl p-3 ${toneStyles}`}>
+      <div className={`mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 ${iconColor}`}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <p className="text-lg font-bold leading-none">{value}</p>
+      <p className="mt-1 text-[11px] font-medium">{label}</p>
+    </div>
+  );
+}
+
+function TodoRow({
+  completed,
+  isActive = false,
+  onSelectTodo,
+  todo,
+}: {
+  completed: boolean;
+  isActive?: boolean;
+  onSelectTodo?: (todoId: string) => void;
+  todo: MockTodo;
+}) {
+  const statusColor =
+    todo.priority === 'high' ? 'bg-red-500' : todo.priority === 'medium' ? 'bg-orange-500' : 'bg-emerald-500';
+
+  const baseClassName = `flex w-full items-center gap-3 rounded-xl p-3 text-left ${
+    completed ? 'bg-[#f8fafc]' : isActive ? 'bg-[#eaf4fc] ring-1 ring-[#b9dbf7]' : 'bg-[#f4f7fb]'
+  }`;
+
+  if (!completed && onSelectTodo) {
+    return (
+      <button type="button" onClick={() => onSelectTodo(todo.id)} className={baseClassName}>
+        <span className={`h-2 w-2 rounded-full ${statusColor}`} />
+        <div className="flex-1">
+          <p className="text-sm font-medium text-slate-900">{todo.title}</p>
+          <p className="text-xs text-slate-500">{todo.description}</p>
+        </div>
+        <ChevronRight className={`h-4 w-4 ${isActive ? 'text-[#1a66cc]' : 'text-slate-400'}`} />
+      </button>
+    );
+  }
+
+  return (
+    <div className={baseClassName}>
+      {completed ? (
+        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+      ) : (
+        <span className={`h-2 w-2 rounded-full ${statusColor}`} />
+      )}
+      <div className="flex-1">
+        <p className={`text-sm font-medium ${completed ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
+          {todo.title}
+        </p>
+        <p className="text-xs text-slate-500">{todo.description}</p>
+      </div>
+      {!completed && <ChevronRight className="h-4 w-4 text-slate-400" />}
+    </div>
+  );
+}
+
+function TodoTaskWorkspace({
+  onClose,
+  onComplete,
+  todo,
+}: {
+  onClose: () => void;
+  onComplete: () => void;
+  todo: MockTodo;
+}) {
+  if (todo.type === 'governmentIdUpload') {
+    return <GovernmentIdTaskCard onClose={onClose} onComplete={onComplete} />;
+  }
+  if (todo.type === 'insuranceCardUpload') {
+    return <InsuranceCardTaskCard onClose={onClose} onComplete={onComplete} />;
+  }
+  if (todo.type === 'carePartnerInvite') {
+    return <CarePartnerInviteTaskCard onClose={onClose} onComplete={onComplete} />;
+  }
+  return <HealthQuestionnaireTaskCard onClose={onClose} onComplete={onComplete} />;
+}
+
+function TodoWorkspaceShell({
+  children,
+  onClose,
+  subtitle,
+  title,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+  subtitle: string;
+  title: string;
+}) {
+  return (
+    <section className="rounded-2xl border border-[#d7e4f1] bg-white p-4 shadow-[0_10px_26px_rgba(15,23,42,0.08)]">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="flex-1">
+          <h4 className="text-base font-semibold text-slate-900">{title}</h4>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">{subtitle}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#d7e4f1] text-slate-500"
+          aria-label="Close task panel"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+function SimulatedUploadCard({
+  buttonLabel,
+  helperText,
+  isUploaded,
+  title,
+  onSimulateUpload,
+}: {
+  buttonLabel: string;
+  helperText: string;
+  isUploaded: boolean;
+  title: string;
+  onSimulateUpload: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-dashed border-[#c7d8ea] bg-[#f8fbff] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-800">{title}</p>
+          <p className="mt-1 text-xs text-slate-500">{helperText}</p>
+        </div>
+        {isUploaded && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+            <Check className="h-3 w-3" />
+            Uploaded
+          </span>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={onSimulateUpload}
+        disabled={isUploaded}
+        className={`mt-3 inline-flex h-10 items-center justify-center rounded-lg px-3 text-xs font-semibold transition ${
+          isUploaded ? 'bg-slate-200 text-slate-500' : 'bg-[#3399e6] text-white shadow-[0_6px_16px_rgba(51,153,230,0.32)]'
+        }`}
+      >
+        {isUploaded ? 'Upload Complete' : buttonLabel}
+      </button>
+    </div>
+  );
+}
+
+function GovernmentIdTaskCard({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
+  const [frontUploaded, setFrontUploaded] = useState(false);
+
+  return (
+    <TodoWorkspaceShell
+      onClose={onClose}
+      title="Upload Government ID"
+      subtitle="Provide a clear image of your government-issued ID. Only the front side is required."
+    >
+      <SimulatedUploadCard
+        title="Government ID (Front)"
+        helperText="Accepted formats: JPG, PNG, PDF."
+        buttonLabel="Simulate Front Upload"
+        isUploaded={frontUploaded}
+        onSimulateUpload={() => setFrontUploaded(true)}
+      />
+
+      <button
+        type="button"
+        onClick={onComplete}
+        disabled={!frontUploaded}
+        className={`inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition ${
+          frontUploaded ? 'bg-[#3399e6] shadow-[0_10px_20px_rgba(51,153,230,0.32)]' : 'bg-slate-300'
+        }`}
+      >
+        Mark As Completed
+      </button>
+    </TodoWorkspaceShell>
+  );
+}
+
+function InsuranceCardTaskCard({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
+  const [frontUploaded, setFrontUploaded] = useState(false);
+  const [backUploaded, setBackUploaded] = useState(false);
+  const canComplete = frontUploaded && backUploaded;
+
+  return (
+    <TodoWorkspaceShell
+      onClose={onClose}
+      title="Upload Insurance Card"
+      subtitle="Upload both front and back images so your coverage can be verified."
+    >
+      <SimulatedUploadCard
+        title="Insurance Card (Front)"
+        helperText="Capture policy number and member name clearly."
+        buttonLabel="Simulate Front Upload"
+        isUploaded={frontUploaded}
+        onSimulateUpload={() => setFrontUploaded(true)}
+      />
+      <SimulatedUploadCard
+        title="Insurance Card (Back)"
+        helperText="Include claim/billing and support phone details."
+        buttonLabel="Simulate Back Upload"
+        isUploaded={backUploaded}
+        onSimulateUpload={() => setBackUploaded(true)}
+      />
+
+      <button
+        type="button"
+        onClick={onComplete}
+        disabled={!canComplete}
+        className={`inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition ${
+          canComplete ? 'bg-[#3399e6] shadow-[0_10px_20px_rgba(51,153,230,0.32)]' : 'bg-slate-300'
+        }`}
+      >
+        Mark As Completed
+      </button>
+    </TodoWorkspaceShell>
+  );
+}
+
+function CarePartnerInviteTaskCard({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
+  const [carePartnerName, setCarePartnerName] = useState('');
+  const [carePartnerEmail, setCarePartnerEmail] = useState('');
+  const [carePartnerPhone, setCarePartnerPhone] = useState('');
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(carePartnerEmail.trim());
+  const canComplete =
+    carePartnerName.trim().length > 0 && carePartnerPhone.trim().length > 0 && emailIsValid && consentGiven;
+
+  function handleCompleteCarePartnerTask() {
+    if (!canComplete) {
+      setErrorMessage('Please complete all fields and provide consent before sending the invite.');
+      return;
+    }
+    setErrorMessage('');
+    onComplete();
+  }
+
+  return (
+    <TodoWorkspaceShell
+      onClose={onClose}
+      title="Add Emergency Contact"
+      subtitle="Invite an emergency contact to receive notifications and view limited case status updates."
+    >
+      <label className="block space-y-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Emergency Contact Name</span>
+        <input
+          value={carePartnerName}
+          onChange={(event) => setCarePartnerName(event.target.value)}
+          placeholder="Enter full name"
+          className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+        />
+      </label>
+
+      <label className="block space-y-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Emergency Contact Email</span>
+        <input
+          type="email"
+          value={carePartnerEmail}
+          onChange={(event) => setCarePartnerEmail(event.target.value)}
+          placeholder="name@example.com"
+          className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+        />
+      </label>
+
+      <label className="block space-y-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Emergency Contact Phone</span>
+        <input
+          type="tel"
+          value={carePartnerPhone}
+          onChange={(event) => setCarePartnerPhone(event.target.value)}
+          placeholder="(555) 123-4567"
+          className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+        />
+      </label>
+
+      <button
+        type="button"
+        onClick={() => setConsentGiven((previous) => !previous)}
+        className="flex w-full items-start gap-2 rounded-xl border border-[#d8e4f1] bg-[#f8fbff] px-3 py-2.5 text-left"
+      >
+        <span
+          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+            consentGiven ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'
+          }`}
+        >
+          {consentGiven && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+        </span>
+        <span className="text-xs leading-relaxed text-slate-600">
+          I consent to this emergency contact receiving notifications and viewing limited case status.
+        </span>
+      </button>
+
+      {errorMessage && <p className="text-xs text-red-600">{errorMessage}</p>}
+
+      <button
+        type="button"
+        onClick={handleCompleteCarePartnerTask}
+        disabled={!canComplete}
+        className={`inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition ${
+          canComplete ? 'bg-[#3399e6] shadow-[0_10px_20px_rgba(51,153,230,0.32)]' : 'bg-slate-300'
+        }`}
+      >
+        Send Invite & Mark As Completed
+      </button>
+    </TodoWorkspaceShell>
+  );
+}
+
+function QuestionnaireInlineChoiceGroup({
+  hasError = false,
+  name,
+  onValueChange,
+  options,
+  value,
+}: {
+  hasError?: boolean;
+  name: string;
+  onValueChange: (value: string) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string;
+}) {
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 ${hasError ? 'border-red-400 bg-red-50/30' : 'border-[#d8e4f1] bg-white'}`}>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {options.map((option) => (
+          <label key={`${name}-${option.value}`} className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={(event) => onValueChange(event.target.value)}
+              className="h-4 w-4 accent-[#3380cc]"
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QuestionnaireRadioCard({
+  hasError = false,
+  helperText,
+  name,
+  options,
+  question,
+  value,
+  onValueChange,
+}: {
+  hasError?: boolean;
+  helperText?: string;
+  name: string;
+  options: Array<{ label: string; value: string }>;
+  question: ReactNode;
+  value: string;
+  onValueChange: (value: string) => void;
+}) {
+  return (
+    <div className={`rounded-xl border p-3 ${hasError ? 'border-red-400 bg-red-50/30' : 'border-[#d8e4f1] bg-[#f8fbff]'}`}>
+      <p className="text-sm font-medium leading-relaxed text-slate-800">{question}</p>
+      {helperText && (
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-[#2a6ead]">
+          <CircleHelp className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{helperText}</span>
+        </p>
+      )}
+
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+        {options.map((option) => (
+          <label key={`${name}-${option.value}`} className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={(event) => onValueChange(event.target.value)}
+              className="h-4 w-4 accent-[#3380cc]"
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
+  const [currentStep, setCurrentStep] = useState<QuestionnaireStep>(1);
+
+  const [onDialysis, setOnDialysis] = useState<BinaryChoice>('');
+  const [dialysisStartMonth, setDialysisStartMonth] = useState('');
+  const [dialysisStartYear, setDialysisStartYear] = useState('');
+  const [eGFR, setEGFR] = useState('');
+  const [dontKnowEgfr, setDontKnowEgfr] = useState(false);
+  const [heightFeet, setHeightFeet] = useState('');
+  const [heightInches, setHeightInches] = useState('');
+  const [weightPounds, setWeightPounds] = useState('');
+  const [isCitizenOrResident, setIsCitizenOrResident] = useState<TernaryChoice>('');
+
+  const [needsMultiOrganTransplant, setNeedsMultiOrganTransplant] = useState<TernaryChoice>('');
+  const [usesSupplementalOxygen, setUsesSupplementalOxygen] = useState<BinaryChoice>('');
+  const [cardiacSurgeryLast6Months, setCardiacSurgeryLast6Months] = useState<TernaryChoice>('');
+  const [activeCancer, setActiveCancer] = useState<BinaryChoice>('');
+  const [activeSubstanceUse, setActiveSubstanceUse] = useState<SubstanceChoice>('');
+  const [hasOpenWounds, setHasOpenWounds] = useState<BinaryChoice>('');
+  const [otherConcerns, setOtherConcerns] = useState('');
+
+  const [showStep1Validation, setShowStep1Validation] = useState(false);
+  const [showStep2Validation, setShowStep2Validation] = useState(false);
+
+  const needsDialysisStart = onDialysis === 'yes';
+  const step1Valid =
+    onDialysis !== '' &&
+    (!needsDialysisStart || (dialysisStartMonth !== '' && dialysisStartYear !== '')) &&
+    heightFeet !== '' &&
+    heightInches !== '' &&
+    weightPounds.trim().length > 0 &&
+    isCitizenOrResident !== '';
+  const step2Valid =
+    needsMultiOrganTransplant !== '' &&
+    usesSupplementalOxygen !== '' &&
+    cardiacSurgeryLast6Months !== '' &&
+    activeCancer !== '' &&
+    activeSubstanceUse !== '' &&
+    hasOpenWounds !== '';
+
+  const step1Error = {
+    dialysisStatus: showStep1Validation && onDialysis === '',
+    dialysisStart: showStep1Validation && needsDialysisStart && (dialysisStartMonth === '' || dialysisStartYear === ''),
+    height: showStep1Validation && (heightFeet === '' || heightInches === ''),
+    weight: showStep1Validation && weightPounds.trim().length === 0,
+    citizenship: showStep1Validation && isCitizenOrResident === '',
+  };
+  const step2Error = {
+    multiOrgan: showStep2Validation && needsMultiOrganTransplant === '',
+    oxygen: showStep2Validation && usesSupplementalOxygen === '',
+    cardiac: showStep2Validation && cardiacSurgeryLast6Months === '',
+    cancer: showStep2Validation && activeCancer === '',
+    substance: showStep2Validation && activeSubstanceUse === '',
+    wounds: showStep2Validation && hasOpenWounds === '',
+  };
+
+  function handleContinue() {
+    if (!step1Valid) {
+      setShowStep1Validation(true);
+      return;
+    }
+    setShowStep1Validation(false);
+    setCurrentStep(2);
+  }
+
+  function handleSubmit() {
+    if (!step2Valid) {
+      setShowStep2Validation(true);
+      return;
+    }
+    setShowStep2Validation(false);
+    onComplete();
+  }
+
+  const baseFieldClassName =
+    'h-11 w-full rounded-xl border bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]';
+  const fieldClassName = (hasError: boolean, disabled = false) =>
+    `${baseFieldClassName} ${hasError ? 'border-red-400 ring-1 ring-red-100' : 'border-[#d8e4f1]'} ${
+      disabled ? 'bg-slate-100 text-slate-400' : ''
+    }`;
+  const progressPercent = currentStep === 1 ? 50 : 100;
+
+  return (
+    <TodoWorkspaceShell
+      onClose={onClose}
+      title="Health Questionnaire"
+      subtitle="Please answer these questions to the best of your ability."
+    >
+      <div className="rounded-xl border border-[#d8e4f1] bg-white p-3">
+        <div className="flex items-center justify-between">
+          <h5 className="text-sm font-semibold text-slate-900">Health Questionnaire</h5>
+          <span className="text-xs font-medium text-slate-500">Step {currentStep} of 2</span>
+        </div>
+        <div className="mt-2 h-1.5 rounded-full bg-[#e4edf7]">
+          <div className="h-full rounded-full bg-[#3380cc] transition-all" style={{ width: `${progressPercent}%` }} />
+        </div>
+      </div>
+
+      {currentStep === 1 ? (
+        <>
+          <div className="rounded-xl bg-[#edf5ff] px-3 py-2 text-xs text-[#2a6ead]">
+            Please answer these questions to the best of your ability. If you&apos;re unsure about something, that&apos;s
+            okay. Give your best estimate or select &quot;I&apos;m not sure.&quot;
+          </div>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you currently on dialysis? *</p>
+              <QuestionnaireInlineChoiceGroup
+                name="dialysis-status"
+                options={[
+                  { label: 'Yes', value: 'yes' },
+                  { label: 'No', value: 'no' },
+                ]}
+                value={onDialysis}
+                hasError={step1Error.dialysisStatus}
+                onValueChange={(value) => setOnDialysis(value as BinaryChoice)}
+              />
+            </div>
+
+            {needsDialysisStart && (
+              <>
+                <div className="h-px bg-[#e3ebf5]" />
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">When did you start dialysis? *</p>
+                    <CircleHelp className="h-3.5 w-3.5 text-[#3380cc]" />
+                  </div>
+                  <p className="text-xs text-slate-500">(Approximate month and year is fine)</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={dialysisStartMonth}
+                      onChange={(event) => setDialysisStartMonth(event.target.value)}
+                      className={fieldClassName(step1Error.dialysisStart)}
+                    >
+                      <option value="">Month</option>
+                      {QUESTIONNAIRE_MONTH_OPTIONS.map((month) => (
+                        <option key={month} value={month}>
+                          {month}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={dialysisStartYear}
+                      onChange={(event) => setDialysisStartYear(event.target.value)}
+                      className={fieldClassName(step1Error.dialysisStart)}
+                    >
+                      <option value="">Year</option>
+                      {QUESTIONNAIRE_YEAR_OPTIONS.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="h-px bg-[#e3ebf5]" />
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                What is your most recent eGFR (kidney function number)?
+              </p>
+              <p className="flex items-start gap-1.5 text-xs text-[#2a6ead]">
+                <CircleHelp className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>This is usually on your lab results. If you don&apos;t know it, that&apos;s okay - we can get it from your clinic.</span>
+              </p>
+              <input
+                type="number"
+                value={eGFR}
+                onChange={(event) => setEGFR(event.target.value)}
+                disabled={dontKnowEgfr}
+                className={fieldClassName(false, dontKnowEgfr)}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setDontKnowEgfr((previous) => {
+                    if (!previous) setEGFR('');
+                    return !previous;
+                  })
+                }
+                className="inline-flex items-center gap-2 text-sm text-slate-700"
+              >
+                <span
+                  className={`flex h-4 w-4 items-center justify-center rounded border ${
+                    dontKnowEgfr ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'
+                  }`}
+                >
+                  {dontKnowEgfr && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+                </span>
+                I don&apos;t know my eGFR
+              </button>
+            </div>
+
+            <div className="h-px bg-[#e3ebf5]" />
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your height? *</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <select value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} className={fieldClassName(step1Error.height)}>
+                    <option value="">Feet</option>
+                    {QUESTIONNAIRE_HEIGHT_FEET_OPTIONS.map((feet) => (
+                      <option key={feet} value={feet}>
+                        {feet}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-500">ft</p>
+                </div>
+                <div className="space-y-1">
+                  <select
+                    value={heightInches}
+                    onChange={(event) => setHeightInches(event.target.value)}
+                    className={fieldClassName(step1Error.height)}
+                  >
+                    <option value="">Inches</option>
+                    {QUESTIONNAIRE_HEIGHT_INCH_OPTIONS.map((inches) => (
+                      <option key={inches} value={inches}>
+                        {inches}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-500">in</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your weight (in pounds)? *</p>
+              <input
+                type="number"
+                value={weightPounds}
+                onChange={(event) => setWeightPounds(event.target.value)}
+                className={fieldClassName(step1Error.weight)}
+              />
+            </div>
+
+            <div className="h-px bg-[#e3ebf5]" />
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you a U.S. citizen or legal resident? *</p>
+              <QuestionnaireInlineChoiceGroup
+                name="citizenship-status"
+                options={[
+                  { label: 'Yes', value: 'yes' },
+                  { label: 'No', value: 'no' },
+                  { label: "I'm not sure", value: 'notSure' },
+                ]}
+                value={isCitizenOrResident}
+                hasError={step1Error.citizenship}
+                onValueChange={(value) => setIsCitizenOrResident(value as TernaryChoice)}
+              />
+            </div>
+          </div>
+
+          {showStep1Validation && !step1Valid && (
+            <p className="text-xs font-medium text-red-600">Please complete all required fields to continue.</p>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleContinue}
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-[#3399e6] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(51,153,230,0.32)]"
+            >
+              Continue
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <h5 className="text-sm font-semibold text-slate-900">Additional Health Information</h5>
+            <p className="text-xs leading-relaxed text-slate-600">
+              These questions help us understand your current health. Please answer honestly - checking &quot;yes&quot;
+              does NOT automatically disqualify you. Our team reviews each case individually.
+            </p>
+          </div>
+
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Do any of the following apply to you currently?</p>
+
+          <div className="space-y-2">
+            <QuestionnaireRadioCard
+              name="multi-organ"
+              question="Do you need a transplant for organs other than your kidney (like heart, liver, or lung)?"
+              options={[
+                { label: 'Yes', value: 'yes' },
+                { label: 'No', value: 'no' },
+                { label: "I'm not sure", value: 'notSure' },
+              ]}
+              value={needsMultiOrganTransplant}
+              hasError={step2Error.multiOrgan}
+              onValueChange={(value) => setNeedsMultiOrganTransplant(value as TernaryChoice)}
+            />
+
+            <QuestionnaireRadioCard
+              name="supplemental-oxygen"
+              question="Do you currently use supplemental oxygen?"
+              options={[
+                { label: 'Yes', value: 'yes' },
+                { label: 'No', value: 'no' },
+              ]}
+              value={usesSupplementalOxygen}
+              hasError={step2Error.oxygen}
+              onValueChange={(value) => setUsesSupplementalOxygen(value as BinaryChoice)}
+            />
+
+            <QuestionnaireRadioCard
+              name="cardiac-surgery"
+              question="Have you had heart surgery in the last 6 months?"
+              options={[
+                { label: 'Yes', value: 'yes' },
+                { label: 'No', value: 'no' },
+                { label: "I'm not sure", value: 'notSure' },
+              ]}
+              value={cardiacSurgeryLast6Months}
+              hasError={step2Error.cardiac}
+              onValueChange={(value) => setCardiacSurgeryLast6Months(value as TernaryChoice)}
+            />
+
+            <QuestionnaireRadioCard
+              name="active-cancer"
+              question={
+                <>
+                  Are you currently receiving cancer treatment?
+                  <br />
+                  (Not including treatment for skin cancer)
+                </>
+              }
+              options={[
+                { label: 'Yes', value: 'yes' },
+                { label: 'No', value: 'no' },
+              ]}
+              value={activeCancer}
+              hasError={step2Error.cancer}
+              onValueChange={(value) => setActiveCancer(value as BinaryChoice)}
+            />
+
+            <QuestionnaireRadioCard
+              name="substance-use"
+              question="Do you currently use recreational drugs or have an active substance use concern?"
+              helperText="Answering yes won't disqualify you - we'll work with you to address this if needed."
+              options={[
+                { label: 'Yes', value: 'yes' },
+                { label: 'No', value: 'no' },
+                { label: 'Prefer not to answer', value: 'preferNotToAnswer' },
+              ]}
+              value={activeSubstanceUse}
+              hasError={step2Error.substance}
+              onValueChange={(value) => setActiveSubstanceUse(value as SubstanceChoice)}
+            />
+
+            <QuestionnaireRadioCard
+              name="open-wounds"
+              question="Do you currently have any open wounds that are not healing?"
+              options={[
+                { label: 'Yes', value: 'yes' },
+                { label: 'No', value: 'no' },
+              ]}
+              value={hasOpenWounds}
+              hasError={step2Error.wounds}
+              onValueChange={(value) => setHasOpenWounds(value as BinaryChoice)}
+            />
+          </div>
+
+          <div className="h-px bg-[#e3ebf5]" />
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Is there anything else about your health you&apos;d like us to know? (Optional)
+            </span>
+            <textarea
+              value={otherConcerns}
+              onChange={(event) => setOtherConcerns(event.target.value)}
+              rows={4}
+              className="w-full rounded-xl border border-[#d8e4f1] bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+            />
+          </label>
+
+          {showStep2Validation && !step2Valid && (
+            <p className="text-xs font-medium text-red-600">Please answer all questions before submitting the form.</p>
+          )}
+
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(1)}
+              className="inline-flex h-11 items-center rounded-xl border border-[#d8e4f1] bg-white px-4 text-sm font-semibold text-slate-700"
+            >
+              ← Back
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="inline-flex h-11 items-center rounded-xl bg-[#3399e6] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(51,153,230,0.32)]"
+            >
+              Submit Form
+            </button>
+          </div>
+        </>
+      )}
+    </TodoWorkspaceShell>
+  );
+}
+
+function CareTeamTab({
+  intent,
+  onGoToTodoList,
+}: {
+  intent?: CareTeamIntent;
+  onGoToTodoList?: () => void;
+}) {
+  const initialUnreadThreadId =
+    intent === 'openFirstUnread'
+      ? (INITIAL_CARE_THREADS.find((thread) => thread.unreadCount > 0)?.id ?? null)
+      : null;
+  const [selectedSegment, setSelectedSegment] = useState<CareTeamSegment>(
+    intent === 'openFirstUnread' ? 'messageCenter' : 'virtualAssistant'
+  );
+  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>(INITIAL_ASSISTANT_MESSAGES);
+  const [assistantInput, setAssistantInput] = useState('');
+  const [assistantTyping, setAssistantTyping] = useState(false);
+
+  const [threads, setThreads] = useState<CareThread[]>(() =>
+    initialUnreadThreadId
+      ? INITIAL_CARE_THREADS.map((thread) =>
+          thread.id === initialUnreadThreadId
+            ? {
+                ...thread,
+                unreadCount: 0,
+                messages: thread.messages.map((message) =>
+                  message.senderRole === 'patient' ? message : { ...message, isRead: true }
+                ),
+              }
+            : thread
+        )
+      : INITIAL_CARE_THREADS
+  );
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(initialUnreadThreadId);
+  const [threadReply, setThreadReply] = useState('');
+  const [threadSearch, setThreadSearch] = useState('');
+  const [threadFilter, setThreadFilter] = useState<'all' | 'unread'>('all');
+
+  const [showComposer, setShowComposer] = useState(false);
+  const [composeRecipientId, setComposeRecipientId] = useState(INITIAL_CARE_THREADS[0]?.id ?? '');
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+  const [composeAttachments, setComposeAttachments] = useState<ComposeAttachment[]>([]);
+
+  const unreadCount = useMemo(
+    () => threads.reduce((total, thread) => total + thread.unreadCount, 0),
+    [threads]
+  );
+  const selectedThread = useMemo(
+    () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
+    [threads, selectedThreadId]
+  );
+  const filteredThreads = useMemo(() => {
+    const query = threadSearch.trim().toLowerCase();
+    return threads.filter((thread) => {
+      if (threadFilter === 'unread' && thread.unreadCount === 0) return false;
+      if (!query) return true;
+      const haystack = [
+        thread.participantName,
+        thread.subject,
+        thread.previewText,
+        thread.participantOrganization,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [threadFilter, threadSearch, threads]);
+  const hasUnreadThreads = useMemo(() => threads.some((thread) => thread.unreadCount > 0), [threads]);
+
+  function assistantReplyFor(input: string) {
+    const normalized = input.toLowerCase();
+    if (normalized.includes('wait') || normalized.includes('center')) {
+      return 'Use your Centers comparisons for wait time, travel, and testing turnaround. Message each coordinator to verify their next open evaluation slot.';
+    }
+    if (normalized.includes('document') || normalized.includes('upload')) {
+      return 'Upload to Documents, then message your center coordinator in Message Center so they can mark the item as received.';
+    }
+    if (normalized.includes('social worker') || normalized.includes('dialysis')) {
+      return 'I can help draft your message. Ask for missing labs, preferred lab sites, and the exact due date to stay on track.';
+    }
+    return 'I can help with center selection, scheduling, document readiness, and care-team communication. Tell me which step you want to handle next.';
+  }
+
+  function sendAssistantMessage() {
+    const message = assistantInput.trim();
+    if (!message || assistantTyping) return;
+
+    setAssistantInput('');
+    setAssistantMessages((previous) => [
+      ...previous,
+      {
+        id: `assistant-user-${Date.now()}`,
+        role: 'user',
+        content: message,
+        timestampLabel: 'Now',
+      },
+    ]);
+    setAssistantTyping(true);
+
+    window.setTimeout(() => {
+      setAssistantMessages((previous) => [
+        ...previous,
+        {
+          id: `assistant-reply-${Date.now()}`,
+          role: 'assistant',
+          content: assistantReplyFor(message),
+          timestampLabel: 'Now',
+        },
+      ]);
+      setAssistantTyping(false);
+    }, 750);
+  }
+
+  function openThread(threadId: string) {
+    setThreads((previous) =>
+      previous.map((thread) =>
+        thread.id === threadId
+          ? {
+              ...thread,
+              unreadCount: 0,
+              messages: thread.messages.map((message) =>
+                message.senderRole === 'patient' ? message : { ...message, isRead: true }
+              ),
+            }
+          : thread
+      )
+    );
+    setSelectedThreadId(threadId);
+    setThreadReply('');
+  }
+
+  function sendThreadReply() {
+    const message = threadReply.trim();
+    if (!selectedThread || !message) return;
+
+    const targetThreadId = selectedThread.id;
+    setThreadReply('');
+    setThreads((previous) =>
+      previous.map((thread) =>
+        thread.id === targetThreadId
+          ? {
+              ...thread,
+              previewText: message,
+              relativeTimeLabel: 'now',
+              messages: [
+                ...thread.messages,
+                {
+                  id: `${targetThreadId}-patient-${Date.now()}`,
+                  senderName: 'You',
+                  senderRole: 'patient',
+                  body: message,
+                  timestampLabel: 'Now',
+                  isRead: true,
+                },
+              ],
+            }
+          : thread
+      )
+    );
+
+    window.setTimeout(() => {
+      setThreads((previous) =>
+        previous.map((thread) => {
+          if (thread.id !== targetThreadId) return thread;
+          const autoReply =
+            thread.participantRole === 'dusw'
+              ? 'Thanks, I received this. I will coordinate with your dialysis unit and follow up with next actions.'
+              : 'Got it. I documented this in your transplant file and will update your task status after team review.';
+          return {
+            ...thread,
+            previewText: autoReply,
+            relativeTimeLabel: 'now',
+            unreadCount: 0,
+            messages: [
+              ...thread.messages,
+              {
+                id: `${targetThreadId}-staff-${Date.now()}`,
+                senderName: thread.participantName,
+                senderRole: thread.participantRole,
+                body: autoReply,
+                timestampLabel: 'Now',
+                isRead: true,
+              },
+            ],
+          };
+        })
+      );
+    }, 900);
+  }
+
+  function sendComposedMessage() {
+    const message = composeBody.trim();
+    const subject = composeSubject.trim();
+    if (!composeRecipientId || !message || !subject) return;
+
+    const attachmentSummary =
+      composeAttachments.length === 0
+        ? ''
+        : composeAttachments.length === 1
+          ? `Attached 1 document: ${composeAttachments[0]?.name}`
+          : `Attached ${composeAttachments.length} documents`;
+    const messageWithAttachments =
+      attachmentSummary.length > 0 ? `${message}\n\n[${attachmentSummary}]` : message;
+    const previewWithAttachments =
+      attachmentSummary.length > 0 ? `${message} • ${attachmentSummary}` : message;
+
+    setThreads((previous) =>
+      previous.map((thread) =>
+        thread.id === composeRecipientId
+          ? {
+              ...thread,
+              subject,
+              previewText: previewWithAttachments,
+              relativeTimeLabel: 'now',
+              messages: [
+                ...thread.messages,
+                {
+                  id: `${thread.id}-compose-${Date.now()}`,
+                  senderName: 'You',
+                  senderRole: 'patient',
+                  body: messageWithAttachments,
+                  timestampLabel: 'Now',
+                  isRead: true,
+                },
+              ],
+            }
+          : thread
+      )
+    );
+    setComposeSubject('');
+    setComposeBody('');
+    setComposeAttachments([]);
+    setShowComposer(false);
+    setSelectedThreadId(composeRecipientId);
+  }
+
+  function formatAttachmentSize(bytes: number) {
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    if (bytes >= 1024) {
+      return `${Math.round(bytes / 1024)} KB`;
+    }
+    return `${bytes} B`;
+  }
+
+  function handleComposeAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const nextAttachments = Array.from(files).map((file, index) => ({
+      id: `${file.name}-${file.size}-${Date.now()}-${index}`,
+      name: file.name,
+      sizeLabel: formatAttachmentSize(file.size),
+    }));
+
+    setComposeAttachments((previous) => [...previous, ...nextAttachments]);
+    event.target.value = '';
+  }
+
+  function removeComposeAttachment(attachmentId: string) {
+    setComposeAttachments((previous) => previous.filter((attachment) => attachment.id !== attachmentId));
+  }
+
+  function markAllThreadsRead() {
+    setThreads((previous) =>
+      previous.map((thread) => ({
+        ...thread,
+        unreadCount: 0,
+        messages: thread.messages.map((message) =>
+          message.senderRole === 'patient' ? message : { ...message, isRead: true }
+        ),
+      }))
+    );
+  }
+
+  const canSendComposedMessage =
+    composeRecipientId.trim().length > 0 && composeSubject.trim().length > 0 && composeBody.trim().length > 0;
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+        <div className="grid grid-cols-2 rounded-xl bg-[#eef2f7] p-1">
+          <button
+            type="button"
+            onClick={() => setSelectedSegment('virtualAssistant')}
+            className={`rounded-[10px] px-2 py-2 text-xs font-semibold transition ${
+              selectedSegment === 'virtualAssistant'
+                ? 'bg-white text-[#1a66cc] shadow-[0_2px_8px_rgba(15,23,42,0.08)]'
+                : 'text-slate-500'
+            }`}
+          >
+            Virtual Assistant
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSegment('messageCenter')}
+            className={`rounded-[10px] px-2 py-2 text-xs font-semibold transition ${
+              selectedSegment === 'messageCenter'
+                ? 'bg-white text-[#1a66cc] shadow-[0_2px_8px_rgba(15,23,42,0.08)]'
+                : 'text-slate-500'
+            }`}
+          >
+            {unreadCount > 0 ? `Message Center (${unreadCount})` : 'Message Center'}
+          </button>
+        </div>
+      </div>
+
+      {selectedSegment === 'virtualAssistant' ? (
+        <section className="overflow-hidden rounded-2xl border border-[#dfe6f1] bg-[#f2f2f7] shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+          <div className="space-y-4 px-3 py-4">
+            {assistantMessages.map((message) =>
+              message.role === 'user' ? (
+                <VirtualAssistantUserBubble key={message.id} message={message} />
+              ) : (
+                <VirtualAssistantAmeliaBubble key={message.id} message={message} onGoToTodoList={onGoToTodoList} />
+              )
+            )}
+
+            {assistantTyping && <VirtualAssistantTypingBubble />}
+
+            <div className="pt-1">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Common Questions
+              </p>
+              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                {QUICK_HELP_CHIPS.map((chip) => {
+                  const Icon = chip.icon;
+                  return (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => setAssistantInput(chip.title)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.08)]"
+                    >
+                      <Icon className="h-3.5 w-3.5 text-[#3399e6]" />
+                      {chip.title}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-[#d9e1ec] bg-[#f2f2f7] p-3">
+            <div className="flex items-center gap-2">
+              <input
+                value={assistantInput}
+                onChange={(event) => setAssistantInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendAssistantMessage();
+                  }
+                }}
+                placeholder="Ask Amelia anything..."
+                className="h-11 flex-1 rounded-full border border-[#d9e1ec] bg-white px-4 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+              />
+              <button
+                type="button"
+                onClick={sendAssistantMessage}
+                disabled={assistantInput.trim().length === 0 || assistantTyping}
+                className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${
+                  assistantInput.trim().length > 0 && !assistantTyping
+                    ? 'bg-gradient-to-br from-[#3399e6] to-[#5469e8]'
+                    : 'bg-slate-300'
+                }`}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="relative overflow-hidden rounded-2xl border border-[#e0e7f2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+          {selectedThread ? (
+            <div className="flex min-h-[560px] flex-col">
+              <div className="flex items-center gap-3 border-b border-[#e3eaf4] px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedThreadId(null)}
+                  className="rounded-full border border-[#dce4f0] p-1.5 text-slate-600"
+                  aria-label="Back to message inbox"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{selectedThread.subject}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {selectedThread.participantName} •{' '}
+                    {selectedThread.participantRole === 'dusw' ? 'Social Worker' : 'Transplant Center'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[#f7f9fc] p-4">
+                {selectedThread.messages.map((message) => (
+                  <CareThreadBubble key={message.id} message={message} />
+                ))}
+              </div>
+
+              <div className="border-t border-[#e3eaf4] bg-white p-3">
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={threadReply}
+                    onChange={(event) => setThreadReply(event.target.value)}
+                    placeholder="Write a reply..."
+                    rows={1}
+                    className="max-h-28 min-h-10 flex-1 resize-none rounded-2xl border border-[#dce4f0] bg-[#f4f7fb] px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+                  />
+                  <button
+                    type="button"
+                    onClick={sendThreadReply}
+                    disabled={threadReply.trim().length === 0}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      threadReply.trim().length > 0 ? 'bg-[#3399e6] text-white' : 'bg-slate-200 text-slate-400'
+                    }`}
+                  >
+                    <SendHorizontal className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="relative min-h-[560px]">
+              <div className="space-y-3 border-b border-[#e3eaf4] px-4 py-3">
+                <p className="text-xs leading-relaxed text-slate-500">
+                  Secure messages with your dialysis team and transplant center staff.
+                </p>
+
+                <div className="flex items-center gap-2 rounded-xl border border-[#dce4f0] bg-[#f6f9fd] px-3 py-2">
+                  <Search className="h-4 w-4 text-slate-400" />
+                  <input
+                    type="search"
+                    value={threadSearch}
+                    onChange={(event) => setThreadSearch(event.target.value)}
+                    placeholder="Search threads"
+                    className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setThreadFilter('all')}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                        threadFilter === 'all'
+                          ? 'bg-[#3399e6] text-white shadow-[0_4px_10px_rgba(51,153,230,0.3)]'
+                          : 'bg-[#eef2f7] text-slate-600'
+                      }`}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setThreadFilter('unread')}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                        threadFilter === 'unread'
+                          ? 'bg-[#3399e6] text-white shadow-[0_4px_10px_rgba(51,153,230,0.3)]'
+                          : 'bg-[#eef2f7] text-slate-600'
+                      }`}
+                    >
+                      Unread
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={markAllThreadsRead}
+                    disabled={!hasUnreadThreads}
+                    className={`text-xs font-semibold ${
+                      hasUnreadThreads ? 'text-[#1a66cc]' : 'cursor-not-allowed text-slate-400'
+                    }`}
+                  >
+                    Mark all read
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-[510px] divide-y divide-[#eef2f7] overflow-y-auto">
+                {filteredThreads.length === 0 ? (
+                  <div className="px-4 py-10 text-center">
+                    <p className="text-sm font-medium text-slate-600">No threads match your search.</p>
+                    <p className="mt-1 text-xs text-slate-400">Try changing the filter or search text.</p>
+                  </div>
+                ) : (
+                  filteredThreads.map((thread) => (
+                    <button
+                      key={thread.id}
+                      type="button"
+                      onClick={() => openThread(thread.id)}
+                      className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-[#f8fbff]"
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${
+                          thread.unreadCount > 0 ? 'bg-[#3399e6]' : 'bg-transparent'
+                        }`}
+                      />
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#dcebfa] text-xs font-bold text-[#2d80c9]">
+                        {initialsFor(thread.participantName)}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p
+                            className={`truncate text-sm ${
+                              thread.unreadCount > 0 ? 'font-semibold text-slate-900' : 'font-medium text-slate-800'
+                            }`}
+                          >
+                            {thread.participantName}
+                          </p>
+                          <p className="shrink-0 text-[11px] text-slate-400">{thread.relativeTimeLabel}</p>
+                        </div>
+                        <p className="truncate text-xs font-medium text-slate-700">{thread.subject}</p>
+                        <p className="truncate text-xs text-slate-500">{thread.previewText}</p>
+                        <p className="mt-1 text-[11px] text-slate-400">{thread.participantOrganization}</p>
+                      </div>
+
+                      {thread.unreadCount > 0 && (
+                        <span className="rounded-full bg-[#3399e6] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {thread.unreadCount}
+                        </span>
+                      )}
+                      <ChevronRight className="h-4 w-4 text-slate-300" />
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowComposer(true)}
+                className="absolute bottom-4 right-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#3399e6] text-white shadow-[0_10px_22px_rgba(51,153,230,0.45)]"
+                aria-label="Compose a new message"
+              >
+                <PenSquare className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+
+          {showComposer && (
+            <div className="absolute inset-0 z-20 flex items-end bg-black/35">
+              <div className="w-full rounded-t-[28px] bg-white p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-900">New Message</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowComposer(false)}
+                    className="text-xs font-semibold text-slate-500"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Recipient
+                    </span>
+                    <select
+                      value={composeRecipientId}
+                      onChange={(event) => setComposeRecipientId(event.target.value)}
+                      className="h-11 w-full rounded-xl border border-[#dce4f0] bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+                    >
+                      {threads.map((thread) => (
+                        <option key={thread.id} value={thread.id}>
+                          {thread.participantName} ({thread.participantRole === 'dusw' ? 'Dialysis' : 'Transplant Center'})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Subject
+                    </span>
+                    <input
+                      value={composeSubject}
+                      onChange={(event) => setComposeSubject(event.target.value)}
+                      placeholder="Enter message subject"
+                      className="h-11 w-full rounded-xl border border-[#dce4f0] bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Message
+                    </span>
+                    <textarea
+                      value={composeBody}
+                      onChange={(event) => setComposeBody(event.target.value)}
+                      rows={4}
+                      placeholder="Type your secure message..."
+                      className="w-full rounded-xl border border-[#dce4f0] bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Attach Documents (Optional)
+                    </span>
+                    <div className="rounded-xl border border-dashed border-[#c9daee] bg-[#f7fbff] p-3">
+                      <label
+                        htmlFor="compose-attachments"
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#dce4f0] bg-white px-3 py-2 text-xs font-semibold text-[#1a66cc]"
+                      >
+                        <Paperclip className="h-3.5 w-3.5" />
+                        Attach Document
+                      </label>
+                      <input
+                        id="compose-attachments"
+                        type="file"
+                        multiple
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                        onChange={handleComposeAttachmentChange}
+                        className="hidden"
+                      />
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        Simulated upload for prototype messaging.
+                      </p>
+
+                      {composeAttachments.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {composeAttachments.map((attachment) => (
+                            <div
+                              key={attachment.id}
+                              className="flex items-center justify-between rounded-lg border border-[#dce4f0] bg-white px-3 py-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-medium text-slate-700">{attachment.name}</p>
+                                <p className="text-[11px] text-slate-500">{attachment.sizeLabel}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeComposeAttachment(attachment.id)}
+                                className="ml-3 text-[11px] font-semibold text-slate-500"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={sendComposedMessage}
+                    disabled={!canSendComposedMessage}
+                    className={`inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white ${
+                      canSendComposedMessage ? 'bg-[#3399e6]' : 'bg-slate-300'
+                    }`}
+                  >
+                    Send Message
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function VirtualAssistantAmeliaBubble({
+  message,
+  onGoToTodoList,
+}: {
+  message: AssistantMessage;
+  onGoToTodoList?: () => void;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <div
+        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+        style={{ background: 'linear-gradient(135deg, #3399e6, #6b4be8)' }}
+      >
+        <Brain className="h-4.5 w-4.5 text-white" />
+      </div>
+      <div className="max-w-[85%]">
+        <div className="rounded-[18px] rounded-bl-[6px] bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-[0_2px_8px_rgba(15,23,42,0.08)]">
+          {message.content}
+        </div>
+        {message.navigationLabel && (
+          <button
+            type="button"
+            onClick={onGoToTodoList}
+            className="mt-2 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#3399e6] to-[#6b4be8] px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            <ListChecks className="h-3 w-3" />
+            {message.navigationLabel}
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        )}
+        <p className="mt-1 px-1 text-[10px] text-slate-400">{message.timestampLabel}</p>
+      </div>
+    </div>
+  );
+}
+
+function VirtualAssistantUserBubble({ message }: { message: AssistantMessage }) {
+  return (
+    <div className="flex justify-end">
+      <div
+        className="max-w-[86%] rounded-[18px] rounded-br-[6px] px-3 py-2 text-sm text-white"
+        style={{ background: 'linear-gradient(135deg, #3399e6, #4c86e8)' }}
+      >
+        {message.content}
+        <p className="mt-1 text-right text-[10px] text-white/80">{message.timestampLabel}</p>
+      </div>
+    </div>
+  );
+}
+
+function VirtualAssistantTypingBubble() {
+  return (
+    <div className="flex items-start gap-2">
+      <div
+        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+        style={{ background: 'linear-gradient(135deg, #3399e6, #6b4be8)' }}
+      >
+        <Brain className="h-4.5 w-4.5 text-white" />
+      </div>
+      <div className="inline-flex items-center gap-1 rounded-[18px] rounded-bl-[6px] bg-white px-3 py-2 shadow-[0_2px_8px_rgba(15,23,42,0.08)]">
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#3399e6] [animation-delay:0ms]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#3399e6] [animation-delay:120ms]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#3399e6] [animation-delay:240ms]" />
+      </div>
+    </div>
+  );
+}
+
+function CareThreadBubble({ message }: { message: CareThreadMessage }) {
+  const isPatient = message.senderRole === 'patient';
+  return (
+    <div className={isPatient ? 'flex justify-end' : 'flex justify-start'}>
+      <div className={isPatient ? 'max-w-[84%]' : 'max-w-[86%]'}>
+        {!isPatient && (
+          <p className="mb-1 px-1 text-[11px] font-medium text-slate-500">
+            {message.senderName} • {message.senderRole === 'dusw' ? 'Social Worker' : 'Transplant Center'}
+          </p>
+        )}
+        <div
+          className={`rounded-[16px] px-3 py-2 text-sm leading-relaxed ${
+            isPatient
+              ? 'rounded-br-[6px] text-white'
+              : 'rounded-bl-[6px] bg-[#eef2f7] text-slate-800 shadow-[0_1px_4px_rgba(15,23,42,0.06)]'
+          }`}
+          style={isPatient ? { background: 'linear-gradient(135deg, #3399e6, #4c86e8)' } : undefined}
+        >
+          {message.body}
+        </div>
+        <p className={`mt-1 text-[10px] text-slate-400 ${isPatient ? 'text-right' : 'text-left'}`}>
+          {message.timestampLabel}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function initialsFor(name: string) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
+
+function ProfileTab({ displayName, username }: { displayName: string; username: string }) {
+  type ProfilePhysician = {
+    id: string;
+    name: string;
+    specialty: string;
+  };
+
+  type ProfileData = {
+    fullName: string;
+    dateOfBirth: string;
+    address: string;
+    email: string;
+    phone: string;
+    emergencyContactName: string;
+    emergencyContactRelationship: string;
+    emergencyContactPhone: string;
+    height: string;
+    weight: string;
+    nephrologistName: string;
+    pcpName: string;
+    otherPhysicians: ProfilePhysician[];
+    onDialysis: boolean;
+    dialysisType: string;
+    dialysisStartDate: string;
+    lastGfr: string;
+    diagnosedConditions: string;
+    pastSurgeries: string;
+    socialWorkerName: string;
+    socialWorkerEmail: string;
+    socialWorkerPhone: string;
+    dialysisClinicName: string;
+    dialysisClinicAddress: string;
+  };
+
+  const seedProfile: ProfileData = {
+    fullName: displayName,
+    dateOfBirth: '1976-04-22',
+    address: '1287 Harbor Ridge Dr, Wilmington, DE 19808',
+    email: username || 'jeremy.rolls@portal.test',
+    phone: '(302) 555-0198',
+    emergencyContactName: 'Maya Rolls',
+    emergencyContactRelationship: 'Spouse',
+    emergencyContactPhone: '(302) 555-0134',
+    height: "5' 8\"",
+    weight: '168',
+    nephrologistName: 'Dr. Priya Menon',
+    pcpName: 'Dr. Steven Patel',
+    otherPhysicians: [
+      { id: 'phys-1', name: 'Dr. Rachel Kim', specialty: 'Cardiology' },
+      { id: 'phys-2', name: 'Dr. Luis Martinez', specialty: 'Endocrinology' },
+    ],
+    onDialysis: true,
+    dialysisType: 'Hemodialysis',
+    dialysisStartDate: 'March 2024',
+    lastGfr: '14',
+    diagnosedConditions: 'Chronic kidney disease, stage 5; hypertension',
+    pastSurgeries: 'AV fistula placement (2024)',
+    socialWorkerName: 'Jordan Lee, LCSW',
+    socialWorkerEmail: 'jordan.lee@riverdialysis.org',
+    socialWorkerPhone: '(302) 555-0172',
+    dialysisClinicName: 'River Dialysis Center',
+    dialysisClinicAddress: '925 North Market St, Wilmington, DE 19801',
+  };
+
+  const [profile, setProfile] = useState<ProfileData>(seedProfile);
+  const [draftProfile, setDraftProfile] = useState<ProfileData>(seedProfile);
+  const [isEditing, setIsEditing] = useState(false);
+
+  function beginEditing() {
+    setDraftProfile(profile);
+    setIsEditing(true);
+  }
+
+  function cancelEditing() {
+    setDraftProfile(profile);
+    setIsEditing(false);
+  }
+
+  function saveProfile() {
+    setProfile(draftProfile);
+    setIsEditing(false);
+  }
+
+  function profileValue<K extends keyof ProfileData>(key: K) {
+    return isEditing ? draftProfile[key] : profile[key];
+  }
+
+  function updateDraft<K extends keyof ProfileData>(key: K, value: ProfileData[K]) {
+    setDraftProfile((previous) => ({ ...previous, [key]: value }));
+  }
+
+  const fullName = profileValue('fullName');
+  const email = profileValue('email');
+
+  return (
+    <div className="space-y-3">
+      <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-slate-900">Profile</h2>
+          <div className="flex items-center gap-2">
+            {isEditing && (
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="rounded-full border border-[#dce4f0] px-3 py-1.5 text-xs font-semibold text-slate-600"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={isEditing ? saveProfile : beginEditing}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                isEditing
+                  ? 'bg-[#3399e6] text-white shadow-[0_8px_14px_rgba(51,153,230,0.28)]'
+                  : 'border border-[#dce4f0] bg-white text-[#1a66cc]'
+              }`}
+            >
+              {isEditing ? 'Save' : 'Edit'}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 rounded-xl bg-[#f4f7fb] p-3">
+          <div
+            className="flex h-14 w-14 items-center justify-center rounded-full text-white"
+            style={{ background: `linear-gradient(135deg, ${PRIMARY}, ${PRIMARY_DARK})` }}
+          >
+            <span className="text-lg font-bold">{initialsFor(fullName || displayName)}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-semibold text-slate-900">{fullName || displayName}</p>
+            <p className="truncate text-xs text-slate-500">{email || username || 'jeremy.rolls@portal.test'}</p>
+            <p className="mt-1 text-[11px] font-medium text-[#1a66cc]">Profile synced</p>
+          </div>
+        </div>
+      </section>
+
+      <ProfileSectionCard icon={UserRound} title="Personal Information">
+        <EditableProfileField
+          label="Full Name"
+          value={profileValue('fullName')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('fullName', value)}
+        />
+        <EditableProfileField
+          label="Date of Birth"
+          type="date"
+          value={profileValue('dateOfBirth')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('dateOfBirth', value)}
+        />
+        <EditableProfileField
+          label="Address"
+          value={profileValue('address')}
+          isEditing={isEditing}
+          multiline
+          onChange={(value) => updateDraft('address', value)}
+        />
+      </ProfileSectionCard>
+
+      <ProfileSectionCard icon={Phone} title="Contact Information">
+        <EditableProfileField
+          label="Email"
+          type="email"
+          value={profileValue('email')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('email', value)}
+        />
+        <EditableProfileField
+          label="Phone"
+          type="tel"
+          value={profileValue('phone')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('phone', value)}
+        />
+      </ProfileSectionCard>
+
+      <ProfileSectionCard icon={CircleHelp} title="Emergency Contact">
+        <EditableProfileField
+          label="Name"
+          value={profileValue('emergencyContactName')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('emergencyContactName', value)}
+        />
+        <EditableProfileField
+          label="Relationship"
+          value={profileValue('emergencyContactRelationship')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('emergencyContactRelationship', value)}
+        />
+        <EditableProfileField
+          label="Phone"
+          type="tel"
+          value={profileValue('emergencyContactPhone')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('emergencyContactPhone', value)}
+        />
+      </ProfileSectionCard>
+
+      <ProfileSectionCard icon={HeartPulse} title="Physical Information">
+        <div className="grid grid-cols-2 gap-2">
+          <EditableProfileField
+            label="Height"
+            value={profileValue('height')}
+            isEditing={isEditing}
+            onChange={(value) => updateDraft('height', value)}
+          />
+          <EditableProfileField
+            label="Weight (lbs)"
+            value={profileValue('weight')}
+            isEditing={isEditing}
+            onChange={(value) => updateDraft('weight', value)}
+          />
+        </div>
+      </ProfileSectionCard>
+
+      <ProfileSectionCard icon={Users} title="Medical Providers">
+        <EditableProfileField
+          label="Nephrologist"
+          value={profileValue('nephrologistName')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('nephrologistName', value)}
+        />
+        <EditableProfileField
+          label="Primary Care Physician"
+          value={profileValue('pcpName')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('pcpName', value)}
+        />
+        <div className="rounded-xl bg-[#f4f7fb] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Other Physicians</p>
+          <div className="mt-2 space-y-2">
+            {(profileValue('otherPhysicians') as ProfilePhysician[]).map((physician) => (
+              <div key={physician.id} className="rounded-lg border border-[#dbe6f2] bg-white px-3 py-2">
+                <p className="text-sm font-semibold text-slate-800">{physician.name}</p>
+                <p className="text-xs text-slate-500">{physician.specialty}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </ProfileSectionCard>
+
+      <ProfileSectionCard icon={FileText} title="Medical History">
+        <div className="rounded-xl bg-[#f4f7fb] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dialysis Status</p>
+          <p className="mt-1 text-sm font-semibold text-slate-800">
+            {profileValue('onDialysis')
+              ? `On Dialysis: ${String(profileValue('dialysisType'))}`
+              : 'Not on dialysis'}
+          </p>
+          {profileValue('onDialysis') && (
+            <p className="text-xs text-slate-500">Started: {String(profileValue('dialysisStartDate'))}</p>
+          )}
+        </div>
+        <EditableProfileField
+          label="Last GFR"
+          value={profileValue('lastGfr')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('lastGfr', value)}
+        />
+        <EditableProfileField
+          label="Diagnosed Conditions"
+          value={profileValue('diagnosedConditions')}
+          isEditing={isEditing}
+          multiline
+          onChange={(value) => updateDraft('diagnosedConditions', value)}
+        />
+        <EditableProfileField
+          label="Past Surgeries"
+          value={profileValue('pastSurgeries')}
+          isEditing={isEditing}
+          multiline
+          onChange={(value) => updateDraft('pastSurgeries', value)}
+        />
+      </ProfileSectionCard>
+
+      <ProfileSectionCard icon={Users} title="Care Team">
+        <div className="space-y-2">
+          <div className="rounded-xl bg-[#f4f7fb] p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned Social Worker</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{profileValue('socialWorkerName')}</p>
+            <div className="mt-1 space-y-1 text-xs text-slate-500">
+              <p className="flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5 text-slate-400" />
+                {profileValue('socialWorkerEmail')}
+              </p>
+              <p className="flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 text-slate-400" />
+                {profileValue('socialWorkerPhone')}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-[#f4f7fb] p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dialysis Clinic</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{profileValue('dialysisClinicName')}</p>
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-slate-500">
+              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span>{profileValue('dialysisClinicAddress')}</span>
+            </p>
+          </div>
+        </div>
+      </ProfileSectionCard>
+
+      <ProfileSectionCard icon={Lock} title="Account Settings">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between rounded-xl bg-[#f4f7fb] px-3 py-3 text-left"
+        >
+          <span className="text-sm font-semibold text-slate-800">Change Password</span>
+          <span className="text-[11px] font-medium text-slate-500">Simulated</span>
+        </button>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between rounded-xl bg-[#fff1f2] px-3 py-3 text-left"
+        >
+          <span className="text-sm font-semibold text-rose-700">Delete Account</span>
+          <span className="text-[11px] font-medium text-rose-500">Simulated</span>
+        </button>
+      </ProfileSectionCard>
+    </div>
+  );
+}
+
+function ProfileSectionCard({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#eaf4fc] text-[#1a66cc]">
+          <Icon className="h-4 w-4" />
+        </div>
+        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      </div>
+      <div className="space-y-2">{children}</div>
+    </section>
+  );
+}
+
+function EditableProfileField({
+  isEditing,
+  label,
+  multiline = false,
+  onChange,
+  type = 'text',
+  value,
+}: {
+  isEditing: boolean;
+  label: string;
+  multiline?: boolean;
+  onChange: (value: string) => void;
+  type?: 'text' | 'email' | 'tel' | 'date';
+  value: string;
+}) {
+  if (isEditing) {
+    return (
+      <label className="block rounded-xl border border-[#dbe6f2] bg-[#f9fbfe] px-3 py-2">
+        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+        {multiline ? (
+          <textarea
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            rows={3}
+            className="w-full resize-none border-0 bg-transparent p-0 text-sm text-slate-800 outline-none"
+          />
+        ) : (
+          <input
+            type={type}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            className="w-full border-0 bg-transparent p-0 text-sm text-slate-800 outline-none"
+          />
+        )}
+      </label>
+    );
+  }
+
+  return (
+    <div className="rounded-xl bg-[#f4f7fb] px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-sm text-slate-800">{value || 'Not specified'}</p>
+    </div>
+  );
+}
+
+function HelpTab() {
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xl font-bold text-slate-900">Help & Support</h2>
+      <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+        <div className="space-y-2">
+          <SupportRow title="Message Care Team" subtitle="Typical response in under 2 hours" />
+          <SupportRow title="Call Transplant Coordinator" subtitle="Direct line: (302) 555-0142" />
+          <SupportRow title="Technical Support" subtitle="Available 24/7 for app issues" />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SupportRow({ subtitle, title }: { subtitle: string; title: string }) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-3 rounded-xl bg-[#f4f7fb] p-3 text-left transition hover:bg-[#edf3fa]"
+    >
+      <CircleHelp className="h-4 w-4 text-[#3399e6]" />
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-slate-900">{title}</p>
+        <p className="text-xs text-slate-500">{subtitle}</p>
+      </div>
+      <ChevronRight className="h-4 w-4 text-slate-400" />
+    </button>
+  );
+}
+
+function CoordinatorIntroOverlay({
+  displayName,
+  onContinue,
+}: {
+  displayName: string;
+  onContinue: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-5">
+      <div className="w-full rounded-[30px] bg-white/10 p-6 text-center backdrop-blur-xl">
+        <div
+          className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full"
+          style={{
+            background: `radial-gradient(circle at 30% 30%, ${PRIMARY}, #6c3ce9)`,
+            boxShadow: '0 0 38px rgba(51, 153, 230, 0.6)',
+          }}
+        >
+          <Brain className="h-11 w-11 text-white" />
+        </div>
+        <p className="text-xl font-semibold text-white/90">Meet Your Personal</p>
+        <h3 className="text-3xl font-bold text-white">Transplant Guide</h3>
+        <p className="mt-3 text-sm leading-relaxed text-white/85">
+          Hi {displayName}! I can help you navigate your transplant journey, understand next steps, and stay ready
+          for your appointments.
+        </p>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold text-white"
+          style={{
+            background: `linear-gradient(90deg, ${PRIMARY}, #6c3ce9)`,
+            boxShadow: '0 14px 28px rgba(51, 153, 230, 0.4)',
+          }}
+        >
+          Let&apos;s Get Started
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
