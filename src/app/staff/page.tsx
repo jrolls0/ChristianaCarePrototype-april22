@@ -44,14 +44,14 @@ const FRONT_DESK_STAGES: PatientStage[] = [
   'screening',
 ];
 
-function matchesFilter(patient: Patient, filter: FilterKey): boolean {
+function matchesFilter(patient: Patient, filter: FilterKey, now: number): boolean {
   switch (filter) {
     case 'all':
       return true;
     case 'stuck':
       return patient.isStuck;
     case 'new': {
-      const days = (Date.now() - new Date(patient.referralDate).getTime()) / 86400000;
+      const days = (now - new Date(patient.referralDate).getTime()) / 86400000;
       return days <= 7;
     }
     case 'onboarding':
@@ -99,8 +99,14 @@ function relativeTime(iso: string): string {
   return `${Math.floor(days / 7)}w ago`;
 }
 
-function countForFilter(patients: Patient[], key: FilterKey) {
-  return patients.filter((p) => matchesFilter(p, key)).length;
+function formatDob(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  return `${Number(m)}/${Number(d)}/${y}`;
+}
+
+function countForFilter(patients: Patient[], key: FilterKey, now: number) {
+  return patients.filter((p) => matchesFilter(p, key, now)).length;
 }
 
 function KpiCard({
@@ -157,27 +163,49 @@ function KpiCard({
 }
 
 export default function StaffDashboardPage() {
-  const patients = useStore((s) => s.patients);
+  const allPatients = useStore((s) => s.patients);
   const router = useRouter();
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [now] = useState<number>(() => Date.now());
 
-  const activeCases = patients.length;
-  const stuckCount = patients.filter((p) => p.isStuck).length;
-  const newThisWeek = patients.filter((p) => {
-    const days = (Date.now() - new Date(p.referralDate).getTime()) / 86400000;
-    return days <= 7;
-  }).length;
-  const awaitingMyAction = patients.filter((p) =>
-    FRONT_DESK_STAGES.includes(p.stage)
-  ).length;
+  // Patients stay hidden from Front Desk until the clinic has submitted their
+  // referral (submitReferral moves them off 'new-referral'). This preserves the
+  // Scene 1 → Scene 2 "watch Jack appear" moment.
+  const patients = useMemo(
+    () => allPatients.filter((p) => p.stage !== 'new-referral'),
+    [allPatients]
+  );
+
+  const { activeCases, stuckCount, newThisWeek, awaitingMyAction } = useMemo(
+    () => ({
+      activeCases: patients.length,
+      stuckCount: patients.filter((p) => p.isStuck).length,
+      newThisWeek: patients.filter((p) => {
+        const days = (now - new Date(p.referralDate).getTime()) / 86400000;
+        return days <= 7;
+      }).length,
+      awaitingMyAction: patients.filter((p) =>
+        FRONT_DESK_STAGES.includes(p.stage)
+      ).length,
+    }),
+    [patients, now]
+  );
 
   const filteredPatients = useMemo(() => {
-    const copy = patients.filter((p) => matchesFilter(p, filter));
+    const copy = patients.filter((p) => matchesFilter(p, filter, now));
     return copy.sort((a, b) => {
       if (a.isStuck !== b.isStuck) return a.isStuck ? -1 : 1;
       return b.daysInStage - a.daysInStage;
     });
-  }, [patients, filter]);
+  }, [patients, filter, now]);
+
+  const filterCounts = useMemo<Record<FilterKey, number>>(() => {
+    const result = {} as Record<FilterKey, number>;
+    for (const f of FILTERS) {
+      result[f.key] = countForFilter(patients, f.key, now);
+    }
+    return result;
+  }, [patients, now]);
 
   const stuckPatients = patients.filter((p) => p.isStuck);
 
@@ -255,7 +283,7 @@ export default function StaffDashboardPage() {
         {/* Filter tabs */}
         <div className="mb-4 flex flex-wrap gap-1.5 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
           {FILTERS.map((f) => {
-            const count = countForFilter(patients, f.key);
+            const count = filterCounts[f.key];
             const isActive = filter === f.key;
             return (
               <button
@@ -323,7 +351,7 @@ export default function StaffDashboardPage() {
                           )}
                         </div>
                         <div className="text-xs text-slate-500">
-                          DOB {new Date(p.dob).toLocaleDateString('en-US')}
+                          DOB {formatDob(p.dob)}
                         </div>
                       </div>
                     </div>

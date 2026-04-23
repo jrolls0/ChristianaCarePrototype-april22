@@ -18,7 +18,6 @@ import {
   Bell,
   BookOpen,
   Brain,
-  Building2,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -34,7 +33,6 @@ import {
   Heart,
   HeartPulse,
   House,
-  HelpCircle,
   ListChecks,
   Lock,
   Mail,
@@ -45,7 +43,6 @@ import {
   PlayCircle,
   Search,
   SendHorizontal,
-  Stethoscope,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -188,19 +185,6 @@ const MOCK_TODOS: MockTodo[] = [
     type: 'healthQuestionnaire',
   },
 ];
-
-const CARE_PARTNER_TODO_TEMPLATE: MockTodo = {
-  id: 'todo-care-partner',
-  title: 'Add Emergency Contact',
-  description: 'Invite an emergency contact to receive notifications and limited case status.',
-  status: 'pending',
-  priority: 'low',
-  type: 'carePartnerInvite',
-};
-
-function createInitialTodos() {
-  return MOCK_TODOS.map((todo) => ({ ...todo }));
-}
 
 const HOME_VISIBLE_STORE_TYPES: ReadonlySet<StoreTodo['type']> = new Set([
   'upload-government-id',
@@ -2048,17 +2032,42 @@ function ComingUpEducationCard({
 
   const interactive = unlocked && !completed;
 
-  const Wrapper: ComponentType<{ children: ReactNode; className: string }> = ({
-    children,
-    className,
-  }) =>
-    interactive ? (
-      <button type="button" onClick={onOpen} className={className}>
-        {children}
-      </button>
-    ) : (
-      <div className={className}>{children}</div>
-    );
+  const rowClass = `flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+    interactive
+      ? 'border-[#b9dbf7] bg-[#f8fbff] hover:bg-[#eef6ff]'
+      : completed
+        ? 'border-[#cfead8] bg-[#f4fbf6]'
+        : 'border-[#e1e7ef] bg-[#f8fafc]'
+  }`;
+
+  const rowInner = (
+    <>
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+          completed
+            ? 'bg-emerald-100 text-emerald-700'
+            : unlocked
+              ? 'bg-[#dcebfa] text-[#1a66cc]'
+              : 'bg-slate-100 text-slate-400'
+        }`}
+      >
+        {completed ? <CheckCircle2 className="h-5 w-5" /> : unlocked ? <PlayCircle className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
+      </div>
+      <div className="flex-1">
+        <p
+          className={`text-sm font-semibold ${
+            unlocked || completed ? 'text-slate-900' : 'text-slate-500'
+          }`}
+        >
+          Transplant Education: What to Expect
+        </p>
+        <p className="text-xs text-slate-500">
+          A 6-minute video walking through evaluation, surgery, and recovery.
+        </p>
+      </div>
+      {interactive && <ChevronRight className="h-4 w-4 text-[#1a66cc]" />}
+    </>
+  );
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
@@ -2069,40 +2078,13 @@ function ComingUpEducationCard({
           {statusLabel}
         </span>
       </div>
-      <Wrapper
-        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-          interactive
-            ? 'border-[#b9dbf7] bg-[#f8fbff] hover:bg-[#eef6ff]'
-            : completed
-              ? 'border-[#cfead8] bg-[#f4fbf6]'
-              : 'border-[#e1e7ef] bg-[#f8fafc]'
-        }`}
-      >
-        <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-            completed
-              ? 'bg-emerald-100 text-emerald-700'
-              : unlocked
-                ? 'bg-[#dcebfa] text-[#1a66cc]'
-                : 'bg-slate-100 text-slate-400'
-          }`}
-        >
-          {completed ? <CheckCircle2 className="h-5 w-5" /> : unlocked ? <PlayCircle className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
-        </div>
-        <div className="flex-1">
-          <p
-            className={`text-sm font-semibold ${
-              unlocked || completed ? 'text-slate-900' : 'text-slate-500'
-            }`}
-          >
-            Transplant Education: What to Expect
-          </p>
-          <p className="text-xs text-slate-500">
-            A 6-minute video walking through evaluation, surgery, and recovery.
-          </p>
-        </div>
-        {interactive && <ChevronRight className="h-4 w-4 text-[#1a66cc]" />}
-      </Wrapper>
+      {interactive ? (
+        <button type="button" onClick={onOpen} className={rowClass}>
+          {rowInner}
+        </button>
+      ) : (
+        <div className={rowClass}>{rowInner}</div>
+      )}
     </section>
   );
 }
@@ -3235,18 +3217,16 @@ function CareTeamTab({
   const [threadFilter, setThreadFilter] = useState<'all' | 'unread'>('all');
 
   const [showComposer, setShowComposer] = useState(false);
-  const [composeRecipientId, setComposeRecipientId] = useState(
+  const [composeRecipientIdState, setComposeRecipientId] = useState(
     () => threads[0]?.id ?? ''
   );
+  const composeRecipientId =
+    composeRecipientIdState && threads.some((t) => t.id === composeRecipientIdState)
+      ? composeRecipientIdState
+      : (threads[0]?.id ?? '');
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
   const [composeAttachments, setComposeAttachments] = useState<ComposeAttachment[]>([]);
-
-  useEffect(() => {
-    if (!composeRecipientId && threads[0]) {
-      setComposeRecipientId(threads[0].id);
-    }
-  }, [composeRecipientId, threads]);
 
   const unreadCount = useMemo(
     () => threads.reduce((total, thread) => total + thread.unreadCount, 0),

@@ -68,6 +68,12 @@ function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
+function formatDob(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  return `${Number(m)}/${Number(d)}/${y}`;
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
     month: 'short',
@@ -118,6 +124,9 @@ function buildActivity(patient: Patient): ActivityEvent[] {
     });
   });
   patient.messages.forEach((m) => {
+    // Skip the auto-generated "Referral received from X" system message —
+    // it's already represented by the explicit referral event above.
+    if (m.fromName === 'ChristianaCare System') return;
     events.push({
       id: `msg-${m.id}`,
       at: m.sentAt,
@@ -285,7 +294,7 @@ export default function StaffCaseDetailPage() {
       <ShellHeader
         eyebrow="ChristianaCare · Case Detail"
         title={`${patient.firstName} ${patient.lastName}`}
-        subtitle={`DOB ${new Date(patient.dob).toLocaleDateString('en-US')} · ${patient.referringClinic}`}
+        subtitle={`DOB ${formatDob(patient.dob)} · ${patient.referringClinic}`}
       />
 
       <main className="mx-auto max-w-7xl px-6 py-8">
