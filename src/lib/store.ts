@@ -72,6 +72,20 @@ export const useStore = create<DemoState>()(
             readByPatient: false,
             readByStaff: true,
           };
+          const hasDuswWelcome = match.messages.some((m) => m.threadKey === 'dusw');
+          const duswWelcomeMsg: Message | null = hasDuswWelcome
+            ? null
+            : {
+                id: `msg-${match.id}-dusw-welcome-${nextIdSuffix()}`,
+                threadId: `${match.id}-dusw`,
+                threadKey: 'dusw',
+                fromRole: 'clinic',
+                fromName: data.duswName,
+                body: `Hi ${data.firstName}, I'm ${data.duswName.split(' ')[0]} from ${data.referringClinic}. I sent your referral to ChristianaCare — they'll reach out soon. Let me know if you have questions.`,
+                sentAt: now,
+                readByPatient: false,
+                readByStaff: true,
+              };
           const seededInitialTodos: Todo[] =
             match.todos.length === 0
               ? [
@@ -118,7 +132,9 @@ export const useStore = create<DemoState>()(
             isStuck: false,
             lastActivityAt: now,
             todos: seededInitialTodos,
-            messages: [...match.messages, systemMsg],
+            messages: duswWelcomeMsg
+              ? [...match.messages, systemMsg, duswWelcomeMsg]
+              : [...match.messages, systemMsg],
           };
           set({ patients: replacePatient(state.patients, updated) });
           return match.id;

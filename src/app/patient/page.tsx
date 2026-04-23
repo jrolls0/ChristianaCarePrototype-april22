@@ -1009,7 +1009,7 @@ function EntryAuthScreen({
             username={username}
           />
         ) : (
-          <RegistrationScreen onCreateAccount={onCreateAccount} />
+          <RegistrationScreen onCreateAccount={onCreateAccount} prefilledEmail={prefilledEmail} />
         )}
       </div>
     </div>
@@ -1129,11 +1129,17 @@ function LoginScreen({
   );
 }
 
-function RegistrationScreen({ onCreateAccount }: { onCreateAccount: (payload: RegistrationPayload) => void }) {
+function RegistrationScreen({
+  onCreateAccount,
+  prefilledEmail,
+}: {
+  onCreateAccount: (payload: RegistrationPayload) => void;
+  prefilledEmail: string;
+}) {
   const [selectedTitleIndex, setSelectedTitleIndex] = useState(0);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(prefilledEmail);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [address, setAddress] = useState('');
