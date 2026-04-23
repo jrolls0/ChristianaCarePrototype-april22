@@ -116,6 +116,8 @@ export interface DemoState {
   submitReferral: (data: ReferralSubmission) => string;
   completeTodo: (patientId: string, todoId: string) => void;
   addCustomTodo: (patientId: string, title: string, description: string) => void;
+  addEmergencyContactTodo: (patientId: string) => void;
+  ensureInitialTodos: (patientId: string) => void;
   sendMessage: (
     patientId: string,
     fromRole: MessageRole,
@@ -123,6 +125,7 @@ export interface DemoState {
     threadKey?: ThreadKey
   ) => void;
   markMessagesRead: (patientId: string, byRole: 'patient' | 'staff') => void;
+  markThreadRead: (patientId: string, threadKey: ThreadKey, byRole: 'patient' | 'staff') => void;
   uploadDocument: (
     patientId: string,
     name: string,

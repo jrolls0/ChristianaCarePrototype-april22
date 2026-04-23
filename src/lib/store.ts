@@ -72,6 +72,32 @@ export const useStore = create<DemoState>()(
             readByPatient: false,
             readByStaff: true,
           };
+          const seededInitialTodos: Todo[] =
+            match.todos.length === 0
+              ? [
+                  {
+                    id: `todo-${match.id}-gov-id`,
+                    type: 'upload-government-id',
+                    title: 'Upload Government ID',
+                    description: "A clear photo of your driver's license or passport.",
+                    status: 'pending',
+                  },
+                  {
+                    id: `todo-${match.id}-insurance`,
+                    type: 'upload-insurance-card',
+                    title: 'Upload Insurance Card',
+                    description: 'Front and back of your primary insurance card.',
+                    status: 'pending',
+                  },
+                  {
+                    id: `todo-${match.id}-health`,
+                    type: 'complete-health-questionnaire',
+                    title: 'Complete Health Questionnaire',
+                    description: 'A short form about your current health and medical history.',
+                    status: 'pending',
+                  },
+                ]
+              : match.todos;
           const updated: Patient = {
             ...match,
             firstName: data.firstName,
@@ -91,6 +117,7 @@ export const useStore = create<DemoState>()(
             daysInStage: 0,
             isStuck: false,
             lastActivityAt: now,
+            todos: seededInitialTodos,
             messages: [...match.messages, systemMsg],
           };
           set({ patients: replacePatient(state.patients, updated) });
@@ -182,6 +209,60 @@ export const useStore = create<DemoState>()(
         });
       },
 
+      ensureInitialTodos: (patientId) => {
+        set({
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId) return p;
+            if (p.todos.length > 0) return p;
+            const initial: Todo[] = [
+              {
+                id: `todo-${p.id}-gov-id`,
+                type: 'upload-government-id',
+                title: 'Upload Government ID',
+                description: "A clear photo of your driver's license or passport.",
+                status: 'pending',
+              },
+              {
+                id: `todo-${p.id}-insurance`,
+                type: 'upload-insurance-card',
+                title: 'Upload Insurance Card',
+                description: 'Front and back of your primary insurance card.',
+                status: 'pending',
+              },
+              {
+                id: `todo-${p.id}-health`,
+                type: 'complete-health-questionnaire',
+                title: 'Complete Health Questionnaire',
+                description: 'A short form about your current health and medical history.',
+                status: 'pending',
+              },
+            ];
+            return { ...p, todos: initial };
+          }),
+        });
+      },
+
+      addEmergencyContactTodo: (patientId) => {
+        const now = new Date().toISOString();
+        set({
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId) return p;
+            if (p.todos.some((t) => t.type === 'add-emergency-contact')) {
+              return p;
+            }
+            const todo: Todo = {
+              id: `todo-${patientId}-emergency`,
+              type: 'add-emergency-contact',
+              title: 'Add Emergency Contact',
+              description: 'Add a trusted person we can reach in an emergency.',
+              status: 'pending',
+              addedAt: now,
+            };
+            return { ...p, todos: [todo, ...p.todos], lastActivityAt: now };
+          }),
+        });
+      },
+
       sendMessage: (
         patientId: string,
         fromRole: MessageRole,
@@ -218,6 +299,25 @@ export const useStore = create<DemoState>()(
             messages: [...patient.messages, message],
             lastActivityAt: now,
           }),
+        });
+      },
+
+      markThreadRead: (patientId, threadKey, byRole) => {
+        set({
+          patients: get().patients.map((p) =>
+            p.id !== patientId
+              ? p
+              : {
+                  ...p,
+                  messages: p.messages.map((m) =>
+                    m.threadKey !== threadKey
+                      ? m
+                      : byRole === 'patient'
+                        ? { ...m, readByPatient: true }
+                        : { ...m, readByStaff: true }
+                  ),
+                }
+          ),
         });
       },
 

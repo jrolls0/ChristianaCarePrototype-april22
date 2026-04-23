@@ -2,7 +2,9 @@
 
 import Image from 'next/image';
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type ComponentType,
@@ -14,7 +16,9 @@ import {
   ArrowRight,
   ArrowUp,
   Bell,
+  BookOpen,
   Brain,
+  Building2,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -26,9 +30,11 @@ import {
   Eye,
   EyeOff,
   FileText,
+  GraduationCap,
   Heart,
   HeartPulse,
   House,
+  HelpCircle,
   ListChecks,
   Lock,
   Mail,
@@ -36,11 +42,15 @@ import {
   Paperclip,
   PenSquare,
   Phone,
+  PlayCircle,
   Search,
   SendHorizontal,
+  Stethoscope,
   UserRound,
   Users,
 } from 'lucide-react';
+import { useStore } from '../../lib/store';
+import type { Patient as StorePatient, Todo as StoreTodo } from '../../lib/types';
 
 type OnboardingStep = 'entry' | 'servicesConsent' | 'medicalRecordsConsent' | 'carePartnerPrompt' | 'app';
 type EntryAuthTab = 'register' | 'login';
@@ -54,7 +64,13 @@ type MockTodo = {
   description: string;
   status: TodoStatus;
   priority: 'high' | 'medium' | 'low';
-  type: 'governmentIdUpload' | 'insuranceCardUpload' | 'healthQuestionnaire' | 'carePartnerInvite';
+  type:
+    | 'governmentIdUpload'
+    | 'insuranceCardUpload'
+    | 'healthQuestionnaire'
+    | 'carePartnerInvite'
+    | 'customStaffTodo';
+  addedByStaff?: string;
 };
 
 type QuestionnaireStep = 1 | 2;
@@ -186,6 +202,52 @@ function createInitialTodos() {
   return MOCK_TODOS.map((todo) => ({ ...todo }));
 }
 
+const HOME_VISIBLE_STORE_TYPES: ReadonlySet<StoreTodo['type']> = new Set([
+  'upload-government-id',
+  'upload-insurance-card',
+  'complete-health-questionnaire',
+  'add-emergency-contact',
+  'custom',
+]);
+
+function mapStoreTodoToUi(todo: StoreTodo): MockTodo {
+  const uiType: MockTodo['type'] =
+    todo.type === 'upload-government-id'
+      ? 'governmentIdUpload'
+      : todo.type === 'upload-insurance-card'
+        ? 'insuranceCardUpload'
+        : todo.type === 'complete-health-questionnaire'
+          ? 'healthQuestionnaire'
+          : todo.type === 'add-emergency-contact'
+            ? 'carePartnerInvite'
+            : 'customStaffTodo';
+  const priority: MockTodo['priority'] =
+    todo.type === 'upload-government-id'
+      ? 'high'
+      : todo.type === 'upload-insurance-card'
+        ? 'medium'
+        : todo.type === 'add-emergency-contact'
+          ? 'low'
+          : todo.type === 'custom'
+            ? 'medium'
+            : 'low';
+  return {
+    id: todo.id,
+    title: todo.title,
+    description: todo.description,
+    status: todo.status === 'completed' ? 'completed' : 'pending',
+    priority,
+    type: uiType,
+    addedByStaff: todo.addedByStaff,
+  };
+}
+
+function storeTodosToUiList(todos: StoreTodo[]): MockTodo[] {
+  return todos
+    .filter((t) => HOME_VISIBLE_STORE_TYPES.has(t.type))
+    .map(mapStoreTodoToUi);
+}
+
 const QUESTIONNAIRE_MONTH_OPTIONS = [
   'January',
   'February',
@@ -205,11 +267,65 @@ const QUESTIONNAIRE_HEIGHT_FEET_OPTIONS = ['3', '4', '5', '6', '7'];
 const QUESTIONNAIRE_HEIGHT_INCH_OPTIONS = Array.from({ length: 12 }, (_, index) => `${index}`);
 
 const QUICK_HELP_CHIPS: QuickHelpChipData[] = [
+  { id: 'parking', title: 'Parking', icon: MapPin },
+  { id: 'insurance', title: 'Insurance', icon: FileText },
   { id: 'wait-times', title: 'Wait times', icon: Clock3 },
-  { id: 'centers', title: 'Center locations', icon: MapPin },
-  { id: 'documents', title: 'Required documents', icon: FileText },
-  { id: 'process', title: 'The process', icon: Heart },
+  { id: 'evaluation-steps', title: 'Evaluation steps', icon: ListChecks },
 ];
+
+type AmeliaAnswer = {
+  id: string;
+  keywords: string[];
+  answer: string;
+};
+
+const AMELIA_ANSWERS: AmeliaAnswer[] = [
+  {
+    id: 'parking',
+    keywords: ['parking', 'park', 'drive', 'directions', 'address', 'where'],
+    answer:
+      "The Transplant Center is at 4755 Ogletown-Stanton Rd, Newark, DE 19718. Free patient parking is in the Garage B deck just south of the main entrance — it's about a 3-minute walk to our office on the 2nd floor. Bring your appointment letter to show the attendant on your first visit.",
+  },
+  {
+    id: 'insurance',
+    keywords: ['insurance', 'accept', 'coverage', 'plan', 'payer', 'medicare', 'medicaid'],
+    answer:
+      "We accept most major plans including Medicare, Medicaid, Blue Cross Blue Shield, Aetna, UnitedHealthcare, and Highmark. Your coordinator will verify your specific plan before scheduling your first evaluation visit, so there are no billing surprises.",
+  },
+  {
+    id: 'wait-times',
+    keywords: ['how long', 'wait', 'time', 'listing', 'referral', 'listed'],
+    answer:
+      "On average, it takes 3–6 months from referral to being listed, assuming labs and records arrive promptly. Every case is different — some move faster, others take longer depending on specialist findings and donor matching.",
+  },
+  {
+    id: 'self-referral',
+    keywords: ['self', 'refer myself', 'self-referral', 'refer me', 'refer my'],
+    answer:
+      "Yes — ChristianaCare accepts self-referrals. You can call our Transplant Referral line at (302) 733-1240 and our team will walk you through next steps. You don't need a dialysis clinic to start the process for you.",
+  },
+  {
+    id: 'recovery',
+    keywords: ['recovery', 'post-transplant', 'after surgery', 'recover', 'hospital stay'],
+    answer:
+      "Typical hospital stay after transplant is 4–6 days. Most patients take it easy for 4–6 weeks before resuming normal activity, and return to work within 8–12 weeks. You'll be on immunosuppressive medications for life, with regular follow-up labs and clinic visits.",
+  },
+  {
+    id: 'care-team',
+    keywords: ['who is', 'contact', 'coordinator', 'transplant team', 'care team', 'reach'],
+    answer:
+      "Your senior transplant coordinator is Dr. Patricia Reeves, and your Front Desk contact is Sarah Martinez. You can message either of them directly from this app's Message Center, or call the front desk at (302) 733-1240 during business hours.",
+  },
+  {
+    id: 'evaluation-steps',
+    keywords: ['steps', 'evaluation', 'process', 'what happens', 'stages', 'workflow'],
+    answer:
+      "There are 5 high-level steps: (1) referral from your dialysis clinic or self-referral, (2) intake and consent forms, (3) a screening review by our front desk, (4) evaluations with specialists — cardiology, nephrology, social work, and others, and (5) a listing decision by the transplant committee.",
+  },
+];
+
+const AMELIA_FALLBACK =
+  "I can help with questions about parking, insurance, wait times, the evaluation process, recovery, and more. For anything specific to your case, please message your care team.";
 
 const INITIAL_ASSISTANT_MESSAGES: AssistantMessage[] = [
   {
@@ -537,24 +653,53 @@ const APP_TABS: Array<{
 ];
 
 export default function MobilePrototypePage() {
+  const currentPatientId = useStore((s) => s.currentPatientId);
+  const patients = useStore((s) => s.patients);
+  const completeTodoAction = useStore((s) => s.completeTodo);
+  const uploadDocumentAction = useStore((s) => s.uploadDocument);
+  const addEmergencyContactTodoAction = useStore((s) => s.addEmergencyContactTodo);
+  const ensureInitialTodosAction = useStore((s) => s.ensureInitialTodos);
+  const setCurrentPatientAction = useStore((s) => s.setCurrentPatient);
+
+  const currentPatient: StorePatient | null =
+    patients.find((p) => p.id === currentPatientId) ??
+    patients.find((p) => p.id === 'patient-jack') ??
+    null;
+  const patientId = currentPatient?.id ?? 'patient-jack';
+
+  useEffect(() => {
+    if (!currentPatientId && currentPatient) {
+      setCurrentPatientAction(currentPatient.id);
+    }
+  }, [currentPatientId, currentPatient, setCurrentPatientAction]);
+
+  const seededEmail = currentPatient?.email ?? '';
+  const seededDisplayName = currentPatient
+    ? `${currentPatient.firstName} ${currentPatient.lastName}`
+    : 'Jack Thompson';
+
   const [rememberedUsername] = useState(() =>
     typeof window === 'undefined' ? '' : (window.localStorage.getItem(SAVED_USERNAME_KEY) ?? '')
   );
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>('entry');
   const [entryAuthTab, setEntryAuthTab] = useState<EntryAuthTab>('register');
-  const [username, setUsername] = useState(rememberedUsername);
+  const [username, setUsername] = useState(rememberedUsername || seededEmail);
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(rememberedUsername.length > 0);
   const [showPassword, setShowPassword] = useState(false);
-  const [registeredDisplayName, setRegisteredDisplayName] = useState('Jeremy Rolls');
-  const [registeredEmail, setRegisteredEmail] = useState(rememberedUsername);
+  const [registeredDisplayName, setRegisteredDisplayName] = useState(seededDisplayName);
+  const [registeredEmail, setRegisteredEmail] = useState(rememberedUsername || seededEmail);
   const [justRegistered, setJustRegistered] = useState(false);
 
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const [careTeamIntent, setCareTeamIntent] = useState<CareTeamIntent>(null);
-  const [displayName, setDisplayName] = useState('Jeremy Rolls');
+  const [displayName, setDisplayName] = useState(seededDisplayName);
   const [showCoordinatorIntro, setShowCoordinatorIntro] = useState(false);
-  const [todos, setTodos] = useState<MockTodo[]>(() => createInitialTodos());
+
+  const todos = useMemo<MockTodo[]>(
+    () => (currentPatient ? storeTodosToUiList(currentPatient.todos) : []),
+    [currentPatient]
+  );
 
   const topBarTitleByTab: Record<AppTab, string> = {
     home: 'Home',
@@ -617,13 +762,18 @@ export default function MobilePrototypePage() {
     setActiveTab('home');
     setCareTeamIntent(null);
     setShowCoordinatorIntro(false);
-    setTodos(createInitialTodos());
   }
 
   function handleTodoComplete(todoId: string) {
-    setTodos((previous) =>
-      previous.map((todo) => (todo.id === todoId ? { ...todo, status: 'completed' } : todo))
-    );
+    const todo = currentPatient?.todos.find((t) => t.id === todoId);
+    if (!todo) return;
+    if (todo.type === 'upload-government-id') {
+      uploadDocumentAction(patientId, 'Government ID — front', 'patient');
+    } else if (todo.type === 'upload-insurance-card') {
+      uploadDocumentAction(patientId, 'Insurance Card — front', 'patient');
+      uploadDocumentAction(patientId, 'Insurance Card — back', 'patient');
+    }
+    completeTodoAction(patientId, todoId);
   }
 
   function handleOpenUnreadMessage() {
@@ -631,17 +781,9 @@ export default function MobilePrototypePage() {
     setCareTeamIntent('openFirstUnread');
   }
 
-  function addCarePartnerTodoIfMissing() {
-    setTodos((previous) => {
-      if (previous.some((todo) => todo.type === 'carePartnerInvite')) {
-        return previous;
-      }
-      return [{ ...CARE_PARTNER_TODO_TEMPLATE }, ...previous];
-    });
-  }
-
-  function clearCarePartnerTodo() {
-    setTodos((previous) => previous.filter((todo) => todo.type !== 'carePartnerInvite'));
+  function handleEnterApp() {
+    ensureInitialTodosAction(patientId);
+    setOnboardingStep('app');
   }
 
   return (
@@ -677,11 +819,11 @@ export default function MobilePrototypePage() {
             {onboardingStep === 'carePartnerPrompt' && (
               <CarePartnerPromptScreen
                 onInvite={() => {
-                  clearCarePartnerTodo();
-                  setOnboardingStep('app');
+                  handleEnterApp();
                 }}
                 onSkip={() => {
-                  addCarePartnerTodoIfMissing();
+                  ensureInitialTodosAction(patientId);
+                  addEmergencyContactTodoAction(patientId);
                   setOnboardingStep('app');
                 }}
               />
@@ -720,11 +862,13 @@ export default function MobilePrototypePage() {
                   onCompleteTodo={handleTodoComplete}
                   onOpenUnreadMessage={handleOpenUnreadMessage}
                   pendingTodos={pendingTodos}
+                  patient={currentPatient}
                 />
               )}
               {activeTab === 'careTeam' && (
                 <CareTeamTab
                   intent={careTeamIntent}
+                  patient={currentPatient}
                   onGoToTodoList={() => {
                     setActiveTab('home');
                     setCareTeamIntent(null);
@@ -1730,6 +1874,7 @@ type HomeTabProps = {
   onCompleteTodo: (todoId: string) => void;
   onOpenUnreadMessage: () => void;
   pendingTodos: MockTodo[];
+  patient: StorePatient | null;
 };
 
 function HomeTab({
@@ -1738,12 +1883,44 @@ function HomeTab({
   onCompleteTodo,
   onOpenUnreadMessage,
   pendingTodos,
+  patient,
 }: HomeTabProps) {
   const [activeTodoId, setActiveTodoId] = useState<string | null>(null);
+  const [educationOpen, setEducationOpen] = useState(false);
+  const [educationCompleted, setEducationCompleted] = useState(false);
   const activeTodo = pendingTodos.find((todo) => todo.id === activeTodoId) ?? null;
-  const unreadCareMessages = INITIAL_CARE_THREADS.reduce((total, thread) => total + thread.unreadCount, 0);
-  const unreadCareThreads = INITIAL_CARE_THREADS.filter((thread) => thread.unreadCount > 0).length;
-  const aiTipsCount = 0;
+
+  const unreadCareMessages = useMemo(
+    () =>
+      patient
+        ? patient.messages.filter((m) => !m.readByPatient && m.fromRole !== 'patient').length
+        : 0,
+    [patient]
+  );
+  const unreadCareThreads = useMemo(() => {
+    if (!patient) return 0;
+    const keys = new Set<string>();
+    patient.messages.forEach((m) => {
+      if (!m.readByPatient && m.fromRole !== 'patient') keys.add(m.threadKey);
+    });
+    return keys.size;
+  }, [patient]);
+
+  const initialTasksComplete = pendingTodos.length === 0;
+
+  if (educationOpen) {
+    return (
+      <div className="space-y-4">
+        <EducationTaskCard
+          onClose={() => setEducationOpen(false)}
+          onComplete={() => {
+            setEducationCompleted(true);
+            setEducationOpen(false);
+          }}
+        />
+      </div>
+    );
+  }
 
   if (activeTodo) {
     return (
@@ -1780,7 +1957,7 @@ function HomeTab({
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <MessageMetricCard
             icon={Mail}
             label="Unread"
@@ -1795,13 +1972,6 @@ function HomeTab({
             label="Threads"
             value={`${unreadCareThreads}`}
             tone="slate"
-          />
-          <MessageMetricCard
-            icon={Brain}
-            label="AI Tips"
-            value={`${aiTipsCount}`}
-            tone="emerald"
-            isInteractive={false}
           />
         </div>
       </section>
@@ -1839,7 +2009,95 @@ function HomeTab({
           )}
         </div>
       </section>
+
+      <ComingUpEducationCard
+        unlocked={initialTasksComplete}
+        completed={educationCompleted}
+        onOpen={() => setEducationOpen(true)}
+      />
     </div>
+  );
+}
+
+function ComingUpEducationCard({
+  unlocked,
+  completed,
+  onOpen,
+}: {
+  unlocked: boolean;
+  completed: boolean;
+  onOpen: () => void;
+}) {
+  const statusLabel = completed
+    ? 'Completed'
+    : unlocked
+      ? 'Ready to start'
+      : 'Available after initial tasks complete';
+
+  const statusTone = completed
+    ? 'bg-[#eef8f2] text-emerald-700'
+    : unlocked
+      ? 'bg-[#eaf4fc] text-[#1a66cc]'
+      : 'bg-[#f4f7fb] text-slate-500';
+
+  const interactive = unlocked && !completed;
+
+  const Wrapper: ComponentType<{ children: ReactNode; className: string }> = ({
+    children,
+    className,
+  }) =>
+    interactive ? (
+      <button type="button" onClick={onOpen} className={className}>
+        {children}
+      </button>
+    ) : (
+      <div className={className}>{children}</div>
+    );
+
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+      <div className="mb-3 flex items-center gap-2">
+        <GraduationCap className="h-4 w-4 text-[#3399e6]" />
+        <h3 className="text-base font-semibold text-slate-900">Coming Up</h3>
+        <span className={`ml-auto rounded-md px-2 py-1 text-[11px] font-medium ${statusTone}`}>
+          {statusLabel}
+        </span>
+      </div>
+      <Wrapper
+        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+          interactive
+            ? 'border-[#b9dbf7] bg-[#f8fbff] hover:bg-[#eef6ff]'
+            : completed
+              ? 'border-[#cfead8] bg-[#f4fbf6]'
+              : 'border-[#e1e7ef] bg-[#f8fafc]'
+        }`}
+      >
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+            completed
+              ? 'bg-emerald-100 text-emerald-700'
+              : unlocked
+                ? 'bg-[#dcebfa] text-[#1a66cc]'
+                : 'bg-slate-100 text-slate-400'
+          }`}
+        >
+          {completed ? <CheckCircle2 className="h-5 w-5" /> : unlocked ? <PlayCircle className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
+        </div>
+        <div className="flex-1">
+          <p
+            className={`text-sm font-semibold ${
+              unlocked || completed ? 'text-slate-900' : 'text-slate-500'
+            }`}
+          >
+            Transplant Education: What to Expect
+          </p>
+          <p className="text-xs text-slate-500">
+            A 6-minute video walking through evaluation, surgery, and recovery.
+          </p>
+        </div>
+        {interactive && <ChevronRight className="h-4 w-4 text-[#1a66cc]" />}
+      </Wrapper>
+    </section>
   );
 }
 
@@ -1964,7 +2222,153 @@ function TodoTaskWorkspace({
   if (todo.type === 'carePartnerInvite') {
     return <CarePartnerInviteTaskCard onClose={onClose} onComplete={onComplete} />;
   }
+  if (todo.type === 'customStaffTodo') {
+    return <CustomStaffTaskCard onClose={onClose} onComplete={onComplete} todo={todo} />;
+  }
   return <HealthQuestionnaireTaskCard onClose={onClose} onComplete={onComplete} />;
+}
+
+function CustomStaffTaskCard({
+  onClose,
+  onComplete,
+  todo,
+}: {
+  onClose: () => void;
+  onComplete: () => void;
+  todo: MockTodo;
+}) {
+  return (
+    <TodoWorkspaceShell
+      onClose={onClose}
+      title={todo.title}
+      subtitle={
+        todo.addedByStaff
+          ? `Added by ${todo.addedByStaff}, ChristianaCare Front Desk.`
+          : 'Added by your ChristianaCare care team.'
+      }
+    >
+      <div className="rounded-xl border border-[#d7e4f1] bg-[#f8fbff] p-3 text-sm leading-relaxed text-slate-700">
+        {todo.description || 'Please complete this task so your care team can keep your evaluation on track.'}
+      </div>
+      <button
+        type="button"
+        onClick={onComplete}
+        className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#3399e6] text-sm font-semibold text-white shadow-[0_10px_20px_rgba(51,153,230,0.32)]"
+      >
+        Mark As Completed
+      </button>
+    </TodoWorkspaceShell>
+  );
+}
+
+function EducationTaskCard({
+  onClose,
+  onComplete,
+}: {
+  onClose: () => void;
+  onComplete: () => void;
+}) {
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [watched, setWatched] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (!playing) return;
+    const start = Date.now();
+    const interval = window.setInterval(() => {
+      const elapsed = Date.now() - start;
+      const pct = Math.min(100, (elapsed / 3000) * 100);
+      setProgress(pct);
+      if (pct >= 100) {
+        window.clearInterval(interval);
+        setPlaying(false);
+        setWatched(true);
+      }
+    }, 50);
+    return () => window.clearInterval(interval);
+  }, [playing]);
+
+  const canComplete = watched && confirmed;
+
+  return (
+    <TodoWorkspaceShell
+      onClose={onClose}
+      title="Transplant Education"
+      subtitle="Watch this short video with your support person, then confirm to complete."
+    >
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-[#1a66cc] to-[#6b4be8]">
+        <div className="flex aspect-video items-center justify-center">
+          {!playing && !watched && (
+            <button
+              type="button"
+              onClick={() => setPlaying(true)}
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-white/95 text-[#1a66cc] shadow-[0_10px_24px_rgba(15,23,42,0.3)]"
+              aria-label="Play education video"
+            >
+              <PlayCircle className="h-10 w-10" />
+            </button>
+          )}
+          {playing && (
+            <div className="flex flex-col items-center gap-2 text-white">
+              <BookOpen className="h-10 w-10" />
+              <p className="text-xs font-semibold uppercase tracking-wide">Now playing</p>
+            </div>
+          )}
+          {watched && (
+            <div className="flex flex-col items-center gap-2 text-white">
+              <CheckCircle2 className="h-10 w-10" />
+              <p className="text-xs font-semibold uppercase tracking-wide">Video complete</p>
+            </div>
+          )}
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/25">
+          <div
+            className="h-full bg-white transition-[width] duration-100 ease-linear"
+            style={{ width: `${watched ? 100 : progress}%` }}
+          />
+        </div>
+      </div>
+
+      <p className="text-xs leading-relaxed text-slate-600">
+        This orientation covers the 5 stages of transplant evaluation, what to expect at your first
+        visit, and how your care team stays in touch throughout the process.
+      </p>
+
+      <button
+        type="button"
+        onClick={() => setConfirmed((previous) => !previous)}
+        disabled={!watched}
+        className={`flex w-full items-start gap-2 rounded-xl border px-3 py-2.5 text-left transition ${
+          watched
+            ? 'border-[#d8e4f1] bg-[#f8fbff]'
+            : 'cursor-not-allowed border-slate-200 bg-slate-50'
+        }`}
+      >
+        <span
+          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+            confirmed ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'
+          }`}
+        >
+          {confirmed && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+        </span>
+        <span className={`text-xs leading-relaxed ${watched ? 'text-slate-600' : 'text-slate-400'}`}>
+          I confirm I watched the video with my support person.
+        </span>
+      </button>
+
+      <button
+        type="button"
+        onClick={onComplete}
+        disabled={!canComplete}
+        className={`inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition ${
+          canComplete ? 'bg-[#3399e6] shadow-[0_10px_20px_rgba(51,153,230,0.32)]' : 'bg-slate-300'
+        }`}
+      >
+        Mark Education Complete
+      </button>
+    </TodoWorkspaceShell>
+  );
 }
 
 function TodoWorkspaceShell({
@@ -2694,17 +3098,124 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
   );
 }
 
+const THREAD_META: Record<
+  'dusw' | 'tc-frontdesk',
+  { subject: string; participantRole: 'dusw' | 'tc_employee' }
+> = {
+  dusw: { subject: 'Dialysis Team', participantRole: 'dusw' },
+  'tc-frontdesk': { subject: 'ChristianaCare Front Desk', participantRole: 'tc_employee' },
+};
+
+function formatRelativeTime(iso: string): string {
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  const diff = Math.max(0, now - then);
+  if (diff < 60_000) return 'now';
+  if (diff < 60 * 60_000) return `${Math.floor(diff / 60_000)}m`;
+  if (diff < 24 * 60 * 60_000) return `${Math.floor(diff / (60 * 60_000))}h`;
+  if (diff < 7 * 24 * 60 * 60_000) return `${Math.floor(diff / (24 * 60 * 60_000))}d`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function formatTimestampLabel(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
+function deriveThreadsFromPatient(patient: StorePatient | null): CareThread[] {
+  if (!patient) return [];
+  const keys: Array<keyof typeof THREAD_META> = ['tc-frontdesk', 'dusw'];
+  const threads: CareThread[] = keys.map((key) => {
+    const meta = THREAD_META[key];
+    const messages = patient.messages
+      .filter((m) => m.threadKey === key)
+      .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+    const participantName =
+      key === 'dusw'
+        ? patient.duswName
+        : patient.messages.find((m) => m.threadKey === 'tc-frontdesk' && m.fromRole === 'staff')
+            ?.fromName ?? 'Sarah Martinez';
+    const participantOrganization =
+      key === 'dusw' ? patient.referringClinic : 'ChristianaCare Transplant Center';
+    const lastMessage = messages[messages.length - 1];
+    const unreadCount = messages.filter(
+      (m) => !m.readByPatient && m.fromRole !== 'patient'
+    ).length;
+    const mapped: CareThreadMessage[] = messages.map((m) => ({
+      id: m.id,
+      senderName: m.fromRole === 'patient' ? 'You' : m.fromName,
+      senderRole:
+        m.fromRole === 'patient' ? 'patient' : m.fromRole === 'clinic' ? 'dusw' : 'tc_employee',
+      body: m.body,
+      timestampLabel: formatTimestampLabel(m.sentAt),
+      isRead: m.readByPatient,
+    }));
+    return {
+      id: `thread-${patient.id}-${key}`,
+      subject: meta.subject,
+      participantName,
+      participantRole: meta.participantRole,
+      participantOrganization,
+      previewText: lastMessage?.body ?? 'No messages yet.',
+      relativeTimeLabel: lastMessage ? formatRelativeTime(lastMessage.sentAt) : '—',
+      unreadCount,
+      messages: mapped,
+    };
+  });
+  return threads;
+}
+
+function threadIdToKey(threadId: string): 'dusw' | 'tc-frontdesk' | null {
+  if (threadId.endsWith('-dusw')) return 'dusw';
+  if (threadId.endsWith('-tc-frontdesk')) return 'tc-frontdesk';
+  return null;
+}
+
+function ameliaReplyFor(input: string): string {
+  const normalized = input.toLowerCase();
+  for (const entry of AMELIA_ANSWERS) {
+    if (entry.keywords.some((k) => normalized.includes(k))) {
+      return entry.answer;
+    }
+  }
+  return AMELIA_FALLBACK;
+}
+
 function CareTeamTab({
   intent,
   onGoToTodoList,
+  patient,
 }: {
   intent?: CareTeamIntent;
   onGoToTodoList?: () => void;
+  patient: StorePatient | null;
 }) {
-  const initialUnreadThreadId =
-    intent === 'openFirstUnread'
-      ? (INITIAL_CARE_THREADS.find((thread) => thread.unreadCount > 0)?.id ?? null)
-      : null;
+  const sendMessageAction = useStore((s) => s.sendMessage);
+  const markThreadReadAction = useStore((s) => s.markThreadRead);
+  const markMessagesReadAction = useStore((s) => s.markMessagesRead);
+
+  const threads = useMemo(() => deriveThreadsFromPatient(patient), [patient]);
+
+  const initialUnreadThreadId = useMemo(() => {
+    if (intent !== 'openFirstUnread') return null;
+    return threads.find((t) => t.unreadCount > 0)?.id ?? null;
+  }, [intent, threads]);
+
+  const didApplyIntent = useRef(false);
+  useEffect(() => {
+    if (intent !== 'openFirstUnread' || didApplyIntent.current) return;
+    if (!patient) return;
+    const firstUnread = threads.find((t) => t.unreadCount > 0);
+    if (firstUnread) {
+      const key = threadIdToKey(firstUnread.id);
+      if (key) markThreadReadAction(patient.id, key, 'patient');
+    }
+    didApplyIntent.current = true;
+  }, [intent, threads, patient, markThreadReadAction]);
+
   const [selectedSegment, setSelectedSegment] = useState<CareTeamSegment>(
     intent === 'openFirstUnread' ? 'messageCenter' : 'virtualAssistant'
   );
@@ -2712,31 +3223,24 @@ function CareTeamTab({
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantTyping, setAssistantTyping] = useState(false);
 
-  const [threads, setThreads] = useState<CareThread[]>(() =>
-    initialUnreadThreadId
-      ? INITIAL_CARE_THREADS.map((thread) =>
-          thread.id === initialUnreadThreadId
-            ? {
-                ...thread,
-                unreadCount: 0,
-                messages: thread.messages.map((message) =>
-                  message.senderRole === 'patient' ? message : { ...message, isRead: true }
-                ),
-              }
-            : thread
-        )
-      : INITIAL_CARE_THREADS
-  );
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(initialUnreadThreadId);
   const [threadReply, setThreadReply] = useState('');
   const [threadSearch, setThreadSearch] = useState('');
   const [threadFilter, setThreadFilter] = useState<'all' | 'unread'>('all');
 
   const [showComposer, setShowComposer] = useState(false);
-  const [composeRecipientId, setComposeRecipientId] = useState(INITIAL_CARE_THREADS[0]?.id ?? '');
+  const [composeRecipientId, setComposeRecipientId] = useState(
+    () => threads[0]?.id ?? ''
+  );
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
   const [composeAttachments, setComposeAttachments] = useState<ComposeAttachment[]>([]);
+
+  useEffect(() => {
+    if (!composeRecipientId && threads[0]) {
+      setComposeRecipientId(threads[0].id);
+    }
+  }, [composeRecipientId, threads]);
 
   const unreadCount = useMemo(
     () => threads.reduce((total, thread) => total + thread.unreadCount, 0),
@@ -2764,22 +3268,8 @@ function CareTeamTab({
   }, [threadFilter, threadSearch, threads]);
   const hasUnreadThreads = useMemo(() => threads.some((thread) => thread.unreadCount > 0), [threads]);
 
-  function assistantReplyFor(input: string) {
-    const normalized = input.toLowerCase();
-    if (normalized.includes('wait') || normalized.includes('center')) {
-      return 'Use your Centers comparisons for wait time, travel, and testing turnaround. Message each coordinator to verify their next open evaluation slot.';
-    }
-    if (normalized.includes('document') || normalized.includes('upload')) {
-      return 'Upload to Documents, then message your center coordinator in Message Center so they can mark the item as received.';
-    }
-    if (normalized.includes('social worker') || normalized.includes('dialysis')) {
-      return 'I can help draft your message. Ask for missing labs, preferred lab sites, and the exact due date to stay on track.';
-    }
-    return 'I can help with center selection, scheduling, document readiness, and care-team communication. Tell me which step you want to handle next.';
-  }
-
-  function sendAssistantMessage() {
-    const message = assistantInput.trim();
+  function sendAssistantMessage(overrideInput?: string) {
+    const message = (overrideInput ?? assistantInput).trim();
     if (!message || assistantTyping) return;
 
     setAssistantInput('');
@@ -2800,95 +3290,36 @@ function CareTeamTab({
         {
           id: `assistant-reply-${Date.now()}`,
           role: 'assistant',
-          content: assistantReplyFor(message),
+          content: ameliaReplyFor(message),
           timestampLabel: 'Now',
         },
       ]);
       setAssistantTyping(false);
-    }, 750);
+    }, 800);
   }
 
   function openThread(threadId: string) {
-    setThreads((previous) =>
-      previous.map((thread) =>
-        thread.id === threadId
-          ? {
-              ...thread,
-              unreadCount: 0,
-              messages: thread.messages.map((message) =>
-                message.senderRole === 'patient' ? message : { ...message, isRead: true }
-              ),
-            }
-          : thread
-      )
-    );
+    if (patient) {
+      const key = threadIdToKey(threadId);
+      if (key) markThreadReadAction(patient.id, key, 'patient');
+    }
     setSelectedThreadId(threadId);
     setThreadReply('');
   }
 
   function sendThreadReply() {
     const message = threadReply.trim();
-    if (!selectedThread || !message) return;
-
-    const targetThreadId = selectedThread.id;
+    if (!selectedThread || !message || !patient) return;
+    const key = threadIdToKey(selectedThread.id);
+    if (!key) return;
+    sendMessageAction(patient.id, 'patient', message, key);
     setThreadReply('');
-    setThreads((previous) =>
-      previous.map((thread) =>
-        thread.id === targetThreadId
-          ? {
-              ...thread,
-              previewText: message,
-              relativeTimeLabel: 'now',
-              messages: [
-                ...thread.messages,
-                {
-                  id: `${targetThreadId}-patient-${Date.now()}`,
-                  senderName: 'You',
-                  senderRole: 'patient',
-                  body: message,
-                  timestampLabel: 'Now',
-                  isRead: true,
-                },
-              ],
-            }
-          : thread
-      )
-    );
-
-    window.setTimeout(() => {
-      setThreads((previous) =>
-        previous.map((thread) => {
-          if (thread.id !== targetThreadId) return thread;
-          const autoReply =
-            thread.participantRole === 'dusw'
-              ? 'Thanks, I received this. I will coordinate with your dialysis unit and follow up with next actions.'
-              : 'Got it. I documented this in your transplant file and will update your task status after team review.';
-          return {
-            ...thread,
-            previewText: autoReply,
-            relativeTimeLabel: 'now',
-            unreadCount: 0,
-            messages: [
-              ...thread.messages,
-              {
-                id: `${targetThreadId}-staff-${Date.now()}`,
-                senderName: thread.participantName,
-                senderRole: thread.participantRole,
-                body: autoReply,
-                timestampLabel: 'Now',
-                isRead: true,
-              },
-            ],
-          };
-        })
-      );
-    }, 900);
   }
 
   function sendComposedMessage() {
     const message = composeBody.trim();
     const subject = composeSubject.trim();
-    if (!composeRecipientId || !message || !subject) return;
+    if (!composeRecipientId || !message || !subject || !patient) return;
 
     const attachmentSummary =
       composeAttachments.length === 0
@@ -2896,39 +3327,23 @@ function CareTeamTab({
         : composeAttachments.length === 1
           ? `Attached 1 document: ${composeAttachments[0]?.name}`
           : `Attached ${composeAttachments.length} documents`;
+    const bodyWithSubject = `${subject}\n\n${message}`;
     const messageWithAttachments =
-      attachmentSummary.length > 0 ? `${message}\n\n[${attachmentSummary}]` : message;
-    const previewWithAttachments =
-      attachmentSummary.length > 0 ? `${message} • ${attachmentSummary}` : message;
+      attachmentSummary.length > 0 ? `${bodyWithSubject}\n\n[${attachmentSummary}]` : bodyWithSubject;
 
-    setThreads((previous) =>
-      previous.map((thread) =>
-        thread.id === composeRecipientId
-          ? {
-              ...thread,
-              subject,
-              previewText: previewWithAttachments,
-              relativeTimeLabel: 'now',
-              messages: [
-                ...thread.messages,
-                {
-                  id: `${thread.id}-compose-${Date.now()}`,
-                  senderName: 'You',
-                  senderRole: 'patient',
-                  body: messageWithAttachments,
-                  timestampLabel: 'Now',
-                  isRead: true,
-                },
-              ],
-            }
-          : thread
-      )
-    );
+    const key = threadIdToKey(composeRecipientId);
+    if (!key) return;
+    sendMessageAction(patient.id, 'patient', messageWithAttachments, key);
     setComposeSubject('');
     setComposeBody('');
     setComposeAttachments([]);
     setShowComposer(false);
     setSelectedThreadId(composeRecipientId);
+  }
+
+  function markAllThreadsReadLocal() {
+    if (!patient) return;
+    markMessagesReadAction(patient.id, 'patient');
   }
 
   function formatAttachmentSize(bytes: number) {
@@ -2957,18 +3372,6 @@ function CareTeamTab({
 
   function removeComposeAttachment(attachmentId: string) {
     setComposeAttachments((previous) => previous.filter((attachment) => attachment.id !== attachmentId));
-  }
-
-  function markAllThreadsRead() {
-    setThreads((previous) =>
-      previous.map((thread) => ({
-        ...thread,
-        unreadCount: 0,
-        messages: thread.messages.map((message) =>
-          message.senderRole === 'patient' ? message : { ...message, isRead: true }
-        ),
-      }))
-    );
   }
 
   const canSendComposedMessage =
@@ -3027,8 +3430,9 @@ function CareTeamTab({
                     <button
                       key={chip.id}
                       type="button"
-                      onClick={() => setAssistantInput(chip.title)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.08)]"
+                      onClick={() => sendAssistantMessage(chip.title)}
+                      disabled={assistantTyping}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.08)] disabled:opacity-60"
                     >
                       <Icon className="h-3.5 w-3.5 text-[#3399e6]" />
                       {chip.title}
@@ -3055,7 +3459,7 @@ function CareTeamTab({
               />
               <button
                 type="button"
-                onClick={sendAssistantMessage}
+                onClick={() => sendAssistantMessage()}
                 disabled={assistantInput.trim().length === 0 || assistantTyping}
                 className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${
                   assistantInput.trim().length > 0 && !assistantTyping
@@ -3164,7 +3568,7 @@ function CareTeamTab({
 
                   <button
                     type="button"
-                    onClick={markAllThreadsRead}
+                    onClick={markAllThreadsReadLocal}
                     disabled={!hasUnreadThreads}
                     className={`text-xs font-semibold ${
                       hasUnreadThreads ? 'text-[#1a66cc]' : 'cursor-not-allowed text-slate-400'
