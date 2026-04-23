@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import '@/styles/globals.css';
+import { CrossTabSync } from '@/components/CrossTabSync';
 
 export const metadata: Metadata = {
   title: 'ChristianaCare Transplant Referral Prototype',
@@ -14,7 +15,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="bg-gray-50 text-gray-900 antialiased">{children}</body>
+      <body className="bg-gray-50 text-gray-900 antialiased">
+        <CrossTabSync />
+        {children}
+      </body>
     </html>
   );
 }
