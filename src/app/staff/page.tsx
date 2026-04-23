@@ -5,43 +5,32 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
-  Bell,
+  CheckCircle2,
   ChevronRight,
   Clock,
-  Inbox,
+  FileText,
+  Mail,
+  MessageSquare,
   Sparkles,
-  TrendingUp,
+  Upload,
   Users,
 } from 'lucide-react';
 import { ShellHeader } from '@/components/ui/ShellHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { StuckBadge } from '@/components/ui/StuckBadge';
+import { InboxDrawer, InboxPill, useInboxUnread } from '@/components/InboxDrawer';
 import { useStore } from '@/lib/store';
-import type { Patient, PatientStage } from '@/lib/types';
+import type { Patient } from '@/lib/types';
 
-type FilterKey =
-  | 'all'
-  | 'stuck'
-  | 'new'
-  | 'onboarding'
-  | 'screening'
-  | 'records'
-  | 'specialists';
+type KpiKey = 'all' | 'stuck' | 'new';
+type StageKey = 'onboarding' | 'screening' | 'records' | 'specialists';
+type FilterKey = KpiKey | StageKey;
 
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'stuck', label: 'Stuck' },
-  { key: 'new', label: 'New' },
+const STAGE_FILTERS: { key: StageKey; label: string }[] = [
   { key: 'onboarding', label: 'Onboarding' },
-  { key: 'screening', label: 'In Screening' },
+  { key: 'screening', label: 'Screening' },
   { key: 'records', label: 'Records' },
   { key: 'specialists', label: 'Specialists' },
-];
-
-const FRONT_DESK_STAGES: PatientStage[] = [
-  'new-referral',
-  'front-desk-review',
-  'screening',
 ];
 
 function matchesFilter(patient: Patient, filter: FilterKey, now: number): boolean {
@@ -67,19 +56,6 @@ function matchesFilter(patient: Patient, filter: FilterKey, now: number): boolea
   }
 }
 
-function waitingOn(patient: Patient): 'Patient' | 'Clinic' | 'Staff' {
-  switch (patient.stage) {
-    case 'new-referral':
-    case 'front-desk-review':
-    case 'screening':
-      return 'Staff';
-    case 'records-collection':
-      return 'Clinic';
-    default:
-      return 'Patient';
-  }
-}
-
 function daysInStageTone(days: number) {
   if (days >= 6) return 'text-red-700 bg-red-50 ring-red-200';
   if (days >= 4) return 'text-amber-700 bg-amber-50 ring-amber-200';
@@ -99,14 +75,45 @@ function relativeTime(iso: string): string {
   return `${Math.floor(days / 7)}w ago`;
 }
 
-function formatDob(iso: string): string {
-  const [y, m, d] = iso.split('-');
-  if (!y || !m || !d) return iso;
-  return `${Number(m)}/${Number(d)}/${y}`;
+type ActivityKind = 'msg' | 'todo' | 'doc' | 'referral';
+
+interface ActivitySummary {
+  kind: ActivityKind;
+  at: string;
+  label: string;
 }
 
-function countForFilter(patients: Patient[], key: FilterKey, now: number) {
-  return patients.filter((p) => matchesFilter(p, key, now)).length;
+function lastActivity(p: Patient): ActivitySummary {
+  type Candidate = { kind: ActivityKind; at: string; label: string };
+  const candidates: Candidate[] = [];
+  for (const m of p.messages) {
+    if (m.fromName === 'ChristianaCare System') continue;
+    candidates.push({ kind: 'msg', at: m.sentAt, label: 'message' });
+  }
+  for (const t of p.todos) {
+    if (t.status === 'completed' && t.completedAt) {
+      candidates.push({ kind: 'todo', at: t.completedAt, label: 'todo' });
+    }
+  }
+  for (const d of p.documents) {
+    candidates.push({ kind: 'doc', at: d.uploadedAt, label: 'upload' });
+  }
+  candidates.push({ kind: 'referral', at: p.referralDate, label: 'referred' });
+  candidates.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  return candidates[0];
+}
+
+function ActivityDot({ kind }: { kind: ActivityKind }) {
+  const tone =
+    kind === 'msg'
+      ? 'text-[#1a66cc]'
+      : kind === 'todo'
+        ? 'text-emerald-600'
+        : kind === 'doc'
+          ? 'text-slate-500'
+          : 'text-violet-600';
+  const Icon = kind === 'msg' ? MessageSquare : kind === 'todo' ? CheckCircle2 : kind === 'doc' ? Upload : Sparkles;
+  return <Icon className={`h-3.5 w-3.5 ${tone}`} />;
 }
 
 function KpiCard({
@@ -115,48 +122,60 @@ function KpiCard({
   tone = 'default',
   icon: Icon,
   active,
+  caption,
   onClick,
 }: {
   label: string;
   value: number;
-  tone?: 'default' | 'alert';
+  tone?: 'default' | 'alert' | 'accent';
   icon: typeof Users;
   active?: boolean;
+  caption?: string;
   onClick: () => void;
 }) {
-  const alert = tone === 'alert';
+  const isAlert = tone === 'alert';
+  const isAccent = tone === 'accent';
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`group flex items-center justify-between gap-4 rounded-2xl border bg-white px-5 py-4 text-left shadow-sm transition hover:border-[#3399e6] hover:shadow-md ${
+      className={`group flex flex-col justify-between gap-3 rounded-2xl border bg-white px-5 py-4 text-left shadow-sm transition hover:shadow-md ${
         active
-          ? alert
+          ? isAlert
             ? 'border-red-300 ring-2 ring-red-100'
-            : 'border-[#3399e6] ring-2 ring-[#dbeeff]'
-          : 'border-slate-200'
+            : isAccent
+              ? 'border-[#1a66cc] ring-2 ring-[#dbeeff]'
+              : 'border-[#3399e6] ring-2 ring-[#dbeeff]'
+          : 'border-slate-200 hover:border-[#3399e6]'
       }`}
     >
-      <div>
+      <div className="flex items-start justify-between gap-3">
         <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           {label}
         </div>
         <div
-          className={`mt-1 text-3xl font-semibold tabular-nums ${
-            alert ? 'text-red-600' : 'text-slate-900'
+          className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+            isAlert
+              ? 'bg-red-50 text-red-600'
+              : isAccent
+                ? 'bg-[#1a66cc]/10 text-[#1a66cc]'
+                : 'bg-[#eef6ff] text-[#1a66cc]'
+          }`}
+        >
+          <Icon className="h-4.5 w-4.5" />
+        </div>
+      </div>
+      <div>
+        <div
+          className={`text-4xl font-bold tabular-nums tracking-tight ${
+            isAlert ? 'text-red-600' : 'text-slate-900'
           }`}
         >
           {value}
         </div>
-      </div>
-      <div
-        className={`flex h-11 w-11 items-center justify-center rounded-xl ${
-          alert
-            ? 'bg-red-50 text-red-600'
-            : 'bg-[#eef6ff] text-[#1a66cc]'
-        }`}
-      >
-        <Icon className="h-5 w-5" />
+        {caption && (
+          <div className="mt-1 text-xs text-slate-500">{caption}</div>
+        )}
       </div>
     </button>
   );
@@ -167,16 +186,18 @@ export default function StaffDashboardPage() {
   const router = useRouter();
   const [filter, setFilter] = useState<FilterKey>('all');
   const [now] = useState<number>(() => Date.now());
+  const [inboxOpen, setInboxOpen] = useState(false);
+
+  const { total: inboxTotal } = useInboxUnread();
 
   // Patients stay hidden from Front Desk until the clinic has submitted their
-  // referral (submitReferral moves them off 'new-referral'). This preserves the
-  // Scene 1 → Scene 2 "watch Jack appear" moment.
+  // referral (Scene 1 → Scene 2 "watch Jack appear" moment).
   const patients = useMemo(
     () => allPatients.filter((p) => p.stage !== 'new-referral'),
     [allPatients]
   );
 
-  const { activeCases, stuckCount, newThisWeek, awaitingMyAction } = useMemo(
+  const { activeCases, stuckCount, newThisWeek, unreadMessages } = useMemo(
     () => ({
       activeCases: patients.length,
       stuckCount: patients.filter((p) => p.isStuck).length,
@@ -184,11 +205,9 @@ export default function StaffDashboardPage() {
         const days = (now - new Date(p.referralDate).getTime()) / 86400000;
         return days <= 7;
       }).length,
-      awaitingMyAction: patients.filter((p) =>
-        FRONT_DESK_STAGES.includes(p.stage)
-      ).length,
+      unreadMessages: inboxTotal,
     }),
-    [patients, now]
+    [patients, now, inboxTotal]
   );
 
   const filteredPatients = useMemo(() => {
@@ -199,15 +218,18 @@ export default function StaffDashboardPage() {
     });
   }, [patients, filter, now]);
 
-  const filterCounts = useMemo<Record<FilterKey, number>>(() => {
-    const result = {} as Record<FilterKey, number>;
-    for (const f of FILTERS) {
-      result[f.key] = countForFilter(patients, f.key, now);
+  const stuckPatients = useMemo(
+    () => patients.filter((p) => p.isStuck),
+    [patients]
+  );
+
+  const stageTabCounts = useMemo(() => {
+    const result = {} as Record<StageKey, number>;
+    for (const f of STAGE_FILTERS) {
+      result[f.key] = patients.filter((p) => matchesFilter(p, f.key, now)).length;
     }
     return result;
   }, [patients, now]);
-
-  const stuckPatients = patients.filter((p) => p.isStuck);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -217,13 +239,27 @@ export default function StaffDashboardPage() {
         subtitle="Front Desk Coordinator"
       />
 
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        {/* Page top row: title + inbox pill */}
+        <div className="mb-5 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+              Case Queue
+            </h2>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {activeCases} active {activeCases === 1 ? 'case' : 'cases'} in the pipeline
+            </p>
+          </div>
+          <InboxPill onClick={() => setInboxOpen(true)} />
+        </div>
+
         {/* KPI strip */}
-        <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <section className="mb-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <KpiCard
             label="Active Cases"
             value={activeCases}
             icon={Users}
+            caption="All patients in progress"
             active={filter === 'all'}
             onClick={() => setFilter('all')}
           />
@@ -232,6 +268,7 @@ export default function StaffDashboardPage() {
             value={stuckCount}
             tone="alert"
             icon={AlertTriangle}
+            caption={stuckCount === 0 ? 'All moving' : 'Needs intervention'}
             active={filter === 'stuck'}
             onClick={() => setFilter('stuck')}
           />
@@ -239,51 +276,48 @@ export default function StaffDashboardPage() {
             label="New This Week"
             value={newThisWeek}
             icon={Sparkles}
+            caption="Referred within 7 days"
             active={filter === 'new'}
             onClick={() => setFilter('new')}
           />
           <KpiCard
-            label="Awaiting My Action"
-            value={awaitingMyAction}
-            icon={Inbox}
-            active={false}
-            onClick={() => setFilter('all')}
+            label="Unread Messages"
+            value={unreadMessages}
+            tone="accent"
+            icon={Mail}
+            caption={unreadMessages === 0 ? 'Inbox clear' : 'Open inbox to reply'}
+            onClick={() => setInboxOpen(true)}
           />
         </section>
 
-        {/* Stuck banner */}
+        {/* Inline stuck summary (replaces the red banner) */}
         {stuckCount > 0 && (
-          <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-red-200 bg-gradient-to-r from-red-50 to-rose-50 px-5 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100 text-red-600">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-red-900">
-                  {stuckCount} {stuckCount === 1 ? 'patient has' : 'patients have'} not moved in over 5 days
-                </p>
-                <p className="mt-0.5 text-xs text-red-800/80">
-                  {stuckPatients
-                    .map((p) => `${p.firstName} ${p.lastName[0]}. (${p.daysInStage}d)`)
-                    .join(' · ')}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setFilter('stuck')}
-              className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700"
-            >
-              View stuck cases
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+          <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+            <span className="font-semibold uppercase tracking-wider text-red-700">
+              Stuck:
+            </span>
+            {stuckPatients.map((p, i) => (
+              <span key={p.id} className="inline-flex items-center">
+                <Link
+                  href={`/staff/${p.id}`}
+                  className="font-medium text-slate-700 transition hover:text-[#1a66cc]"
+                >
+                  {p.firstName} {p.lastName[0]}.
+                </Link>
+                <span className="ml-1 text-slate-500">({p.daysInStage}d)</span>
+                {i < stuckPatients.length - 1 && <span className="mx-1 text-slate-300">·</span>}
+              </span>
+            ))}
           </div>
         )}
 
-        {/* Filter tabs */}
+        {/* Stage filter tabs */}
         <div className="mb-4 flex flex-wrap gap-1.5 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
-          {FILTERS.map((f) => {
-            const count = filterCounts[f.key];
+          <span className="inline-flex items-center rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Stage
+          </span>
+          {STAGE_FILTERS.map((f) => {
+            const count = stageTabCounts[f.key];
             const isActive = filter === f.key;
             return (
               <button
@@ -319,86 +353,83 @@ export default function StaffDashboardPage() {
                 <th className="px-4 py-3 text-left font-semibold">Stage</th>
                 <th className="px-4 py-3 text-left font-semibold">Days in Stage</th>
                 <th className="px-4 py-3 text-left font-semibold">Last Activity</th>
-                <th className="px-4 py-3 text-left font-semibold">Waiting On</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredPatients.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-slate-500">
+                  <td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-500">
                     No patients match this filter.
                   </td>
                 </tr>
               )}
-              {filteredPatients.map((p) => (
-                <tr
-                  key={p.id}
-                  className="group cursor-pointer transition hover:bg-[#f5faff]"
-                  onClick={() => router.push(`/staff/${p.id}`)}
-                >
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-xs font-semibold text-white">
-                        {p.firstName[0]}
-                        {p.lastName[0]}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-slate-900">
-                          {p.firstName} {p.lastName}
-                          {p.isStuck && (
-                            <StuckBadge days={p.daysInStage} className="ml-2 align-middle" />
-                          )}
+              {filteredPatients.map((p) => {
+                const act = lastActivity(p);
+                return (
+                  <tr
+                    key={p.id}
+                    className="group cursor-pointer transition odd:bg-slate-50/40 hover:bg-[#f5faff]"
+                    onClick={() => router.push(`/staff/${p.id}`)}
+                  >
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-xs font-semibold text-white shadow-sm">
+                          {p.firstName[0]}
+                          {p.lastName[0]}
                         </div>
-                        <div className="text-xs text-slate-500">
-                          DOB {formatDob(p.dob)}
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-slate-900">
+                            {p.firstName} {p.lastName}
+                            {p.isStuck && (
+                              <StuckBadge days={p.daysInStage} className="ml-2 align-middle" />
+                            )}
+                          </div>
+                          <div className="truncate text-xs text-slate-500">
+                            {p.preferredLanguage} · {p.nephrologistName}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-slate-700">{p.referringClinic}</td>
-                  <td className="px-4 py-4">
-                    <StatusPill stage={p.stage} />
-                  </td>
-                  <td className="px-4 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ring-1 ring-inset ${daysInStageTone(p.daysInStage)}`}
-                    >
-                      <Clock className="h-3 w-3" />
-                      {p.daysInStage}d
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-xs text-slate-500">
-                    {relativeTime(p.lastActivityAt)}
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-600">
-                      <TrendingUp className="h-3 w-3 text-slate-400" />
-                      {waitingOn(p)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-right">
-                    <Link
-                      href={`/staff/${p.id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-[#3399e6] hover:text-[#1a66cc] group-hover:border-[#3399e6] group-hover:text-[#1a66cc]"
-                    >
-                      Open
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-4 text-slate-700">{p.referringClinic}</td>
+                    <td className="px-4 py-4">
+                      <StatusPill stage={p.stage} />
+                    </td>
+                    <td className="px-4 py-4">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ring-1 ring-inset ${daysInStageTone(p.daysInStage)}`}
+                      >
+                        <Clock className="h-3 w-3" />
+                        {p.daysInStage}d
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                        <ActivityDot kind={act.kind} />
+                        <span className="font-medium text-slate-700">{act.label}</span>
+                        <span className="text-slate-400">·</span>
+                        <span className="text-slate-500">{relativeTime(act.at)}</span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <Link
+                        href={`/staff/${p.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-[#3399e6] hover:text-[#1a66cc] group-hover:border-[#3399e6] group-hover:text-[#1a66cc]"
+                      >
+                        Open
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-
-        {/* Tiny footer hint */}
-        <div className="mt-4 flex items-center justify-end gap-1.5 text-xs text-slate-400">
-          <Bell className="h-3 w-3" />
-          Refresh the patient tab to see cross-view updates
-        </div>
       </main>
+
+      <InboxDrawer open={inboxOpen} onOpenChange={setInboxOpen} />
     </div>
   );
 }

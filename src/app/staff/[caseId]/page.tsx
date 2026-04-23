@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
   ArrowRight,
+  Building2,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -19,14 +20,17 @@ import {
   Send,
   Shield,
   Sparkles,
+  Stethoscope,
   UserPlus,
   X,
 } from 'lucide-react';
 import { ShellHeader } from '@/components/ui/ShellHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { StuckBadge } from '@/components/ui/StuckBadge';
+import { ThreadMessage } from '@/components/ui/ThreadMessage';
+import { InboxDrawer, InboxPill } from '@/components/InboxDrawer';
 import { useStore } from '@/lib/store';
-import type { Message, Patient, PatientStage, Todo } from '@/lib/types';
+import type { Patient, PatientStage, ThreadKey, Todo } from '@/lib/types';
 
 const STAGE_FLOW: PatientStage[] = [
   'new-referral',
@@ -56,6 +60,14 @@ const TODO_TEMPLATES = [
   'Confirm preferred appointment times',
 ];
 
+type MsgTab = 'patient' | 'clinic';
+type ComposeTarget = 'patient' | 'clinic';
+
+const MSG_THREAD: Record<MsgTab, ThreadKey> = {
+  patient: 'tc-frontdesk',
+  clinic: 'clinic-staff',
+};
+
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diffMs / 60000);
@@ -72,15 +84,6 @@ function formatDob(iso: string): string {
   const [y, m, d] = iso.split('-');
   if (!y || !m || !d) return iso;
   return `${Number(m)}/${Number(d)}/${y}`;
-}
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
 }
 
 interface ActivityEvent {
@@ -121,19 +124,6 @@ function buildActivity(patient: Patient): ActivityEvent[] {
       detail: d.uploadedBy === 'patient' ? 'by patient' : 'by clinic',
       icon: FileText,
       tone: 'slate',
-    });
-  });
-  patient.messages.forEach((m) => {
-    // Skip the auto-generated "Referral received from X" system message —
-    // it's already represented by the explicit referral event above.
-    if (m.fromName === 'ChristianaCare System') return;
-    events.push({
-      id: `msg-${m.id}`,
-      at: m.sentAt,
-      label: `Message from ${m.fromName}`,
-      detail: m.body.length > 60 ? `${m.body.slice(0, 60)}…` : m.body,
-      icon: MessageSquare,
-      tone: 'blue',
     });
   });
   return events.sort(
@@ -190,39 +180,6 @@ function TodoRow({ todo }: { todo: Todo }) {
   );
 }
 
-function ThreadMessage({ message }: { message: Message }) {
-  const fromStaff = message.fromRole === 'staff';
-  return (
-    <div className={`flex ${fromStaff ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm ${
-          fromStaff
-            ? 'bg-[#3399e6] text-white'
-            : message.fromRole === 'clinic'
-              ? 'bg-violet-50 text-violet-900 ring-1 ring-violet-100'
-              : 'bg-slate-100 text-slate-800'
-        }`}
-      >
-        <div
-          className={`text-[10px] font-semibold uppercase tracking-wider ${
-            fromStaff ? 'text-white/80' : 'text-slate-500'
-          }`}
-        >
-          {message.fromName}
-        </div>
-        <p className="mt-1 whitespace-pre-wrap leading-relaxed">{message.body}</p>
-        <div
-          className={`mt-1 text-[10px] ${
-            fromStaff ? 'text-white/70' : 'text-slate-400'
-          }`}
-        >
-          {formatDateTime(message.sentAt)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function StaffCaseDetailPage() {
   const params = useParams<{ caseId: string }>();
   const caseId = params?.caseId ?? '';
@@ -231,18 +188,46 @@ export default function StaffCaseDetailPage() {
   );
   const addCustomTodo = useStore((s) => s.addCustomTodo);
   const sendMessage = useStore((s) => s.sendMessage);
+  const markThreadRead = useStore((s) => s.markThreadRead);
   const advanceStage = useStore((s) => s.advancePatientStage);
 
   const [todoOpen, setTodoOpen] = useState(false);
   const [msgOpen, setMsgOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<MsgTab>('patient');
   const [quickReply, setQuickReply] = useState('');
 
-  const staffThread = useMemo(() => {
+  const patientThread = useMemo(() => {
     if (!patient) return [];
     return patient.messages
       .filter((m) => m.threadKey === 'tc-frontdesk')
       .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
   }, [patient]);
+
+  const clinicThread = useMemo(() => {
+    if (!patient) return [];
+    return patient.messages
+      .filter((m) => m.threadKey === 'clinic-staff')
+      .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+  }, [patient]);
+
+  const patientUnread = patientThread.some(
+    (m) => m.fromRole !== 'staff' && !m.readByStaff
+  );
+  const clinicUnread = clinicThread.some(
+    (m) => m.fromRole !== 'staff' && !m.readByStaff
+  );
+
+  const activeThread = activeTab === 'patient' ? patientThread : clinicThread;
+
+  useEffect(() => {
+    if (!patient) return;
+    const threadKey = MSG_THREAD[activeTab];
+    const thread = activeTab === 'patient' ? patientThread : clinicThread;
+    if (thread.some((m) => m.fromRole !== 'staff' && !m.readByStaff)) {
+      markThreadRead(patient.id, threadKey, 'staff');
+    }
+  }, [patient, activeTab, patientThread, clinicThread, markThreadRead]);
 
   const activity = useMemo(
     () => (patient ? buildActivity(patient) : []),
@@ -281,11 +266,19 @@ export default function StaffCaseDetailPage() {
     return STAGE_FLOW[idx + 1];
   })();
 
+  const nonSystemMsgCount = patient.messages.filter(
+    (m) => m.fromName !== 'ChristianaCare System'
+  ).length;
+  const isEmptyCase =
+    patient.todos.length === 0 &&
+    patient.documents.length === 0 &&
+    nonSystemMsgCount === 0;
+
   function handleQuickReply(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const body = quickReply.trim();
     if (!body || !patient) return;
-    sendMessage(patient.id, 'staff', body, 'tc-frontdesk');
+    sendMessage(patient.id, 'staff', body, MSG_THREAD[activeTab]);
     setQuickReply('');
   }
 
@@ -298,7 +291,7 @@ export default function StaffCaseDetailPage() {
       />
 
       <main className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <Link
             href="/staff"
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-[#1a66cc]"
@@ -306,6 +299,7 @@ export default function StaffCaseDetailPage() {
             <ChevronLeft className="h-3.5 w-3.5" />
             All Cases
           </Link>
+          <InboxPill onClick={() => setInboxOpen(true)} />
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -353,107 +347,181 @@ export default function StaffCaseDetailPage() {
               </div>
             </section>
 
-            {/* TODOs card */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-900">Onboarding & To-Dos</h3>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {completedCount} of {patient.todos.length} complete
-                  </p>
+            {isEmptyCase ? (
+              <section className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-10 text-center shadow-sm">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-50 text-violet-600 ring-1 ring-violet-100">
+                  <Sparkles className="h-5 w-5" />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setTodoOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[#3399e6] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a66cc] transition hover:bg-[#eef6ff]"
-                >
-                  <PlusCircle className="h-3.5 w-3.5" />
-                  Add To-Do
-                </button>
-              </div>
-              {patient.todos.length === 0 ? (
-                <p className="mt-4 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                  No to-dos yet. Once this patient enters onboarding, the initial checklist will appear here.
+                <h3 className="mt-3 text-base font-semibold text-slate-900">
+                  Just arrived
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Waiting for {patient.firstName} to start onboarding. To-dos, documents,
+                  and messages will show up here as they come in.
                 </p>
-              ) : (
-                <ul className="mt-3 divide-y divide-slate-100">
-                  {patient.todos.map((t) => (
-                    <TodoRow key={t.id} todo={t} />
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            {/* Documents card */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-base font-semibold text-slate-900">Documents</h3>
-              {patient.documents.length === 0 ? (
-                <p className="mt-3 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                  No documents uploaded yet.
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {patient.documents.map((d) => (
-                    <li
-                      key={d.id}
-                      className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5"
+              </section>
+            ) : (
+              <>
+                {/* TODOs card */}
+                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-900">Onboarding & To-Dos</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {completedCount} of {patient.todos.length} complete
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTodoOpen(true)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#3399e6] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a66cc] transition hover:bg-[#eef6ff]"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-[#1a66cc] ring-1 ring-slate-200">
-                          <FileText className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">{d.name}</p>
-                          <p className="text-xs text-slate-500">
-                            Uploaded by {d.uploadedBy} · {relativeTime(d.uploadedAt)}
-                          </p>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+                      <PlusCircle className="h-3.5 w-3.5" />
+                      Add To-Do
+                    </button>
+                  </div>
+                  {patient.todos.length === 0 ? (
+                    <p className="mt-4 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                      No to-dos yet. Once this patient enters onboarding, the initial checklist will appear here.
+                    </p>
+                  ) : (
+                    <ul className="mt-3 divide-y divide-slate-100">
+                      {patient.todos.map((t) => (
+                        <TodoRow key={t.id} todo={t} />
+                      ))}
+                    </ul>
+                  )}
+                </section>
 
-            {/* Activity timeline */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-base font-semibold text-slate-900">Activity Timeline</h3>
-              {activity.length === 0 ? (
-                <p className="mt-3 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                  No activity yet.
-                </p>
-              ) : (
-                <ol className="mt-4 space-y-3">
-                  {activity.slice(0, 12).map((e) => {
-                    const Icon = e.icon;
-                    return (
-                      <li key={e.id} className="flex items-start gap-3">
-                        <div
-                          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1 ring-inset ${toneClasses(e.tone)}`}
+                {/* Documents card */}
+                {patient.documents.length > 0 && (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-base font-semibold text-slate-900">Documents</h3>
+                    <ul className="mt-3 space-y-2">
+                      {patient.documents.map((d) => (
+                        <li
+                          key={d.id}
+                          className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5"
                         >
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <p className="text-sm font-medium text-slate-800">{e.label}</p>
-                            <span className="shrink-0 text-xs text-slate-400">
-                              {relativeTime(e.at)}
-                            </span>
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-[#1a66cc] ring-1 ring-slate-200">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-slate-900">{d.name}</p>
+                              <p className="text-xs text-slate-500">
+                                Uploaded by {d.uploadedBy} · {relativeTime(d.uploadedAt)}
+                              </p>
+                            </div>
                           </div>
-                          {e.detail && (
-                            <p className="text-xs text-slate-500">{e.detail}</p>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </section>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {/* Activity timeline — state changes only (messages live in the Messages card) */}
+                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <h3 className="text-base font-semibold text-slate-900">Activity Timeline</h3>
+                  {activity.length === 0 ? (
+                    <p className="mt-3 rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                      No activity yet.
+                    </p>
+                  ) : (
+                    <ol className="mt-4 space-y-3">
+                      {activity.slice(0, 12).map((e) => {
+                        const Icon = e.icon;
+                        return (
+                          <li key={e.id} className="flex items-start gap-3">
+                            <div
+                              className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1 ring-inset ${toneClasses(e.tone)}`}
+                            >
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-baseline justify-between gap-2">
+                                <p className="text-sm font-medium text-slate-800">{e.label}</p>
+                                <span className="shrink-0 text-xs text-slate-400">
+                                  {relativeTime(e.at)}
+                                </span>
+                              </div>
+                              {e.detail && (
+                                <p className="text-xs text-slate-500">{e.detail}</p>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+                </section>
+              </>
+            )}
           </div>
 
-          {/* RIGHT COLUMN */}
+          {/* RIGHT COLUMN: Messages → Quick Actions → Patient Details */}
           <div className="space-y-6">
+            {/* Messages thread (tabbed) */}
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+                <h3 className="text-sm font-semibold text-slate-900">Messages</h3>
+                <span className="text-xs text-slate-400">
+                  {activeThread.length} {activeThread.length === 1 ? 'message' : 'messages'}
+                </span>
+              </div>
+              <div className="flex border-b border-slate-100 bg-slate-50/60 px-2 pt-2">
+                <TabButton
+                  active={activeTab === 'patient'}
+                  unread={patientUnread}
+                  onClick={() => setActiveTab('patient')}
+                  icon={<MessageSquare className="h-3.5 w-3.5" />}
+                  label="Patient"
+                />
+                <TabButton
+                  active={activeTab === 'clinic'}
+                  unread={clinicUnread}
+                  onClick={() => setActiveTab('clinic')}
+                  icon={<Building2 className="h-3.5 w-3.5" />}
+                  label="Clinic"
+                />
+              </div>
+              <div className="max-h-[360px] space-y-2.5 overflow-y-auto bg-slate-50/40 px-4 py-4">
+                {activeThread.length === 0 ? (
+                  <p className="py-6 text-center text-xs text-slate-500">
+                    {activeTab === 'patient'
+                      ? 'No messages with the patient yet. Send the first one below.'
+                      : `No messages with ${patient.referringClinic} yet. Start the conversation below.`}
+                  </p>
+                ) : (
+                  activeThread.map((m) => <ThreadMessage key={m.id} message={m} viewerRole="staff" />)
+                )}
+              </div>
+              <form
+                onSubmit={handleQuickReply}
+                className="flex items-center gap-2 border-t border-slate-100 bg-white px-3 py-3"
+              >
+                <input
+                  type="text"
+                  value={quickReply}
+                  onChange={(e) => setQuickReply(e.target.value)}
+                  placeholder={
+                    activeTab === 'patient'
+                      ? 'Quick reply to patient…'
+                      : 'Quick reply to clinic…'
+                  }
+                  className="h-10 flex-1 rounded-xl border border-slate-200 bg-slate-50/60 px-3 text-sm outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
+                />
+                <button
+                  type="submit"
+                  disabled={!quickReply.trim()}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#3399e6] px-3 text-sm font-semibold text-white transition hover:bg-[#1a66cc] disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Send
+                </button>
+              </form>
+            </section>
+
             {/* Quick actions */}
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h3 className="text-sm font-semibold text-slate-900">Quick Actions</h3>
@@ -465,18 +533,7 @@ export default function StaffCaseDetailPage() {
                 >
                   <span className="inline-flex items-center gap-2">
                     <Send className="h-4 w-4" />
-                    Send Message to Patient
-                  </span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTodoOpen(true)}
-                  className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-[#3399e6] bg-white px-4 py-2.5 text-sm font-semibold text-[#1a66cc] transition hover:bg-[#eef6ff]"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <PlusCircle className="h-4 w-4" />
-                    Add To-Do for Patient
+                    Compose Message
                   </span>
                   <ArrowRight className="h-4 w-4" />
                 </button>
@@ -499,45 +556,6 @@ export default function StaffCaseDetailPage() {
                   )}
                 </button>
               </div>
-            </section>
-
-            {/* Messages thread */}
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-                <h3 className="text-sm font-semibold text-slate-900">Messages</h3>
-                <span className="text-xs text-slate-400">
-                  {staffThread.length} {staffThread.length === 1 ? 'message' : 'messages'}
-                </span>
-              </div>
-              <div className="max-h-[360px] space-y-2.5 overflow-y-auto bg-slate-50/40 px-4 py-4">
-                {staffThread.length === 0 ? (
-                  <p className="py-6 text-center text-xs text-slate-500">
-                    No messages yet. Send the first one below.
-                  </p>
-                ) : (
-                  staffThread.map((m) => <ThreadMessage key={m.id} message={m} />)
-                )}
-              </div>
-              <form
-                onSubmit={handleQuickReply}
-                className="flex items-center gap-2 border-t border-slate-100 bg-white px-3 py-3"
-              >
-                <input
-                  type="text"
-                  value={quickReply}
-                  onChange={(e) => setQuickReply(e.target.value)}
-                  placeholder="Quick reply to patient…"
-                  className="h-10 flex-1 rounded-xl border border-slate-200 bg-slate-50/60 px-3 text-sm outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
-                />
-                <button
-                  type="submit"
-                  disabled={!quickReply.trim()}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#3399e6] px-3 text-sm font-semibold text-white transition hover:bg-[#1a66cc] disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  Send
-                </button>
-              </form>
             </section>
 
             {/* Patient details */}
@@ -566,7 +584,10 @@ export default function StaffCaseDetailPage() {
                   <dt className="text-xs font-medium uppercase tracking-wider text-slate-500">
                     Nephrologist
                   </dt>
-                  <dd className="text-right text-slate-800">{patient.nephrologistName}</dd>
+                  <dd className="flex items-center gap-1.5 text-right text-slate-800">
+                    <Stethoscope className="h-3.5 w-3.5 text-slate-400" />
+                    {patient.nephrologistName}
+                  </dd>
                 </div>
               </dl>
               {patient.emergencyContact ? (
@@ -604,19 +625,56 @@ export default function StaffCaseDetailPage() {
         />
       )}
 
-      {/* Send Message modal */}
+      {/* Compose Message modal with recipient picker */}
       {msgOpen && (
         <SendMessageModal
-          recipientLabel={`${patient.firstName} ${patient.lastName} (Patient)`}
+          patientLabel={`${patient.firstName} ${patient.lastName}`}
+          clinicLabel={patient.referringClinic}
+          initialTarget={activeTab}
           onClose={() => setMsgOpen(false)}
-          onSubmit={(subject, body) => {
+          onSubmit={(target, subject, body) => {
             const combined = subject ? `${subject}\n\n${body}` : body;
-            sendMessage(patient.id, 'staff', combined, 'tc-frontdesk');
+            sendMessage(patient.id, 'staff', combined, MSG_THREAD[target]);
+            setActiveTab(target);
             setMsgOpen(false);
           }}
         />
       )}
+
+      <InboxDrawer open={inboxOpen} onOpenChange={setInboxOpen} />
     </div>
+  );
+}
+
+function TabButton({
+  active,
+  unread,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  unread: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative inline-flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-semibold transition ${
+        active
+          ? 'bg-white text-[#1a66cc] ring-1 ring-slate-100'
+          : 'text-slate-500 hover:text-slate-700'
+      }`}
+    >
+      {icon}
+      {label}
+      {unread && (
+        <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
+      )}
+    </button>
   );
 }
 
@@ -728,21 +786,26 @@ function AddTodoModal({
 }
 
 function SendMessageModal({
-  recipientLabel,
+  patientLabel,
+  clinicLabel,
+  initialTarget,
   onClose,
   onSubmit,
 }: {
-  recipientLabel: string;
+  patientLabel: string;
+  clinicLabel: string;
+  initialTarget: ComposeTarget;
   onClose: () => void;
-  onSubmit: (subject: string, body: string) => void;
+  onSubmit: (target: ComposeTarget, subject: string, body: string) => void;
 }) {
+  const [target, setTarget] = useState<ComposeTarget>(initialTarget);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!body.trim()) return;
-    onSubmit(subject.trim(), body.trim());
+    onSubmit(target, subject.trim(), body.trim());
   }
 
   return (
@@ -755,7 +818,7 @@ function SendMessageModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <h3 className="text-base font-semibold text-slate-900">Send Message</h3>
+          <h3 className="text-base font-semibold text-slate-900">Compose Message</h3>
           <button
             type="button"
             onClick={onClose}
@@ -769,9 +832,41 @@ function SendMessageModal({
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               To
             </span>
-            <div className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              <MessageSquare className="h-4 w-4 text-slate-400" />
-              {recipientLabel}
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setTarget('patient')}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                  target === 'patient'
+                    ? 'border-[#3399e6] bg-[#eef6ff] text-[#0f3e80] ring-2 ring-[#dbeeff]'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                }`}
+              >
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider opacity-70">
+                    Patient
+                  </span>
+                  <span className="block truncate font-medium">{patientLabel}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTarget('clinic')}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                  target === 'clinic'
+                    ? 'border-violet-400 bg-violet-50 text-violet-900 ring-2 ring-violet-100'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                }`}
+              >
+                <Building2 className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider opacity-70">
+                    Dialysis Clinic
+                  </span>
+                  <span className="block truncate font-medium">{clinicLabel}</span>
+                </span>
+              </button>
             </div>
           </div>
           <label className="block space-y-1.5">
@@ -794,7 +889,11 @@ function SendMessageModal({
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={5}
-              placeholder="Write a message to the patient…"
+              placeholder={
+                target === 'patient'
+                  ? 'Write a message to the patient…'
+                  : 'Write a message to the dialysis clinic…'
+              }
               className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
               autoFocus
             />
