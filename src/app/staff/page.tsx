@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   Bell,
@@ -157,6 +158,7 @@ function KpiCard({
 
 export default function StaffDashboardPage() {
   const patients = useStore((s) => s.patients);
+  const router = useRouter();
   const [filter, setFilter] = useState<FilterKey>('all');
 
   const activeCases = patients.length;
@@ -305,9 +307,7 @@ export default function StaffDashboardPage() {
                 <tr
                   key={p.id}
                   className="group cursor-pointer transition hover:bg-[#f5faff]"
-                  onClick={() => {
-                    window.location.href = `/staff/${p.id}`;
-                  }}
+                  onClick={() => router.push(`/staff/${p.id}`)}
                 >
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
