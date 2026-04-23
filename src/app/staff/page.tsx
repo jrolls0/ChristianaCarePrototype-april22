@@ -5,21 +5,23 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
   ChevronRight,
   Clock,
-  FileText,
-  Mail,
+  Inbox,
   MessageSquare,
   Sparkles,
+  Stethoscope,
   Upload,
   Users,
 } from 'lucide-react';
-import { ShellHeader } from '@/components/ui/ShellHeader';
+import { clsx } from 'clsx';
+import { StaffShell, STAFF_CONTAINER } from '@/components/ui/StaffShell';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { StuckBadge } from '@/components/ui/StuckBadge';
-import { InboxDrawer, InboxPill, useInboxUnread } from '@/components/InboxDrawer';
 import { useStore } from '@/lib/store';
+import { useInboxUnread } from '@/lib/inbox';
 import type { Patient } from '@/lib/types';
 
 type KpiKey = 'all' | 'stuck' | 'new';
@@ -84,15 +86,14 @@ interface ActivitySummary {
 }
 
 function lastActivity(p: Patient): ActivitySummary {
-  type Candidate = { kind: ActivityKind; at: string; label: string };
-  const candidates: Candidate[] = [];
+  const candidates: ActivitySummary[] = [];
   for (const m of p.messages) {
     if (m.fromName === 'ChristianaCare System') continue;
     candidates.push({ kind: 'msg', at: m.sentAt, label: 'message' });
   }
   for (const t of p.todos) {
     if (t.status === 'completed' && t.completedAt) {
-      candidates.push({ kind: 'todo', at: t.completedAt, label: 'todo' });
+      candidates.push({ kind: 'todo', at: t.completedAt, label: 'todo done' });
     }
   }
   for (const d of p.documents) {
@@ -112,73 +113,15 @@ function ActivityDot({ kind }: { kind: ActivityKind }) {
         : kind === 'doc'
           ? 'text-slate-500'
           : 'text-violet-600';
-  const Icon = kind === 'msg' ? MessageSquare : kind === 'todo' ? CheckCircle2 : kind === 'doc' ? Upload : Sparkles;
+  const Icon =
+    kind === 'msg'
+      ? MessageSquare
+      : kind === 'todo'
+        ? CheckCircle2
+        : kind === 'doc'
+          ? Upload
+          : Sparkles;
   return <Icon className={`h-3.5 w-3.5 ${tone}`} />;
-}
-
-function KpiCard({
-  label,
-  value,
-  tone = 'default',
-  icon: Icon,
-  active,
-  caption,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  tone?: 'default' | 'alert' | 'accent';
-  icon: typeof Users;
-  active?: boolean;
-  caption?: string;
-  onClick: () => void;
-}) {
-  const isAlert = tone === 'alert';
-  const isAccent = tone === 'accent';
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`group flex flex-col justify-between gap-3 rounded-2xl border bg-white px-5 py-4 text-left shadow-sm transition hover:shadow-md ${
-        active
-          ? isAlert
-            ? 'border-red-300 ring-2 ring-red-100'
-            : isAccent
-              ? 'border-[#1a66cc] ring-2 ring-[#dbeeff]'
-              : 'border-[#3399e6] ring-2 ring-[#dbeeff]'
-          : 'border-slate-200 hover:border-[#3399e6]'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-          {label}
-        </div>
-        <div
-          className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-            isAlert
-              ? 'bg-red-50 text-red-600'
-              : isAccent
-                ? 'bg-[#1a66cc]/10 text-[#1a66cc]'
-                : 'bg-[#eef6ff] text-[#1a66cc]'
-          }`}
-        >
-          <Icon className="h-4.5 w-4.5" />
-        </div>
-      </div>
-      <div>
-        <div
-          className={`text-4xl font-bold tabular-nums tracking-tight ${
-            isAlert ? 'text-red-600' : 'text-slate-900'
-          }`}
-        >
-          {value}
-        </div>
-        {caption && (
-          <div className="mt-1 text-xs text-slate-500">{caption}</div>
-        )}
-      </div>
-    </button>
-  );
 }
 
 export default function StaffDashboardPage() {
@@ -186,12 +129,9 @@ export default function StaffDashboardPage() {
   const router = useRouter();
   const [filter, setFilter] = useState<FilterKey>('all');
   const [now] = useState<number>(() => Date.now());
-  const [inboxOpen, setInboxOpen] = useState(false);
 
   const { total: inboxTotal } = useInboxUnread();
 
-  // Patients stay hidden from Front Desk until the clinic has submitted their
-  // referral (Scene 1 → Scene 2 "watch Jack appear" moment).
   const patients = useMemo(
     () => allPatients.filter((p) => p.stage !== 'new-referral'),
     [allPatients]
@@ -232,15 +172,8 @@ export default function StaffDashboardPage() {
   }, [patients, now]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <ShellHeader
-        eyebrow="ChristianaCare · Transplant Referrals"
-        title="Sarah Martinez"
-        subtitle="Front Desk Coordinator"
-      />
-
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        {/* Page top row: title + inbox pill */}
+    <StaffShell>
+      <main className={clsx('py-6', STAFF_CONTAINER)}>
         <div className="mb-5 flex items-end justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold tracking-tight text-slate-900">
@@ -250,72 +183,40 @@ export default function StaffDashboardPage() {
               {activeCases} active {activeCases === 1 ? 'case' : 'cases'} in the pipeline
             </p>
           </div>
-          <InboxPill onClick={() => setInboxOpen(true)} />
         </div>
 
         {/* KPI strip */}
-        <section className="mb-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <KpiCard
+        <section className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <QuietKpi
             label="Active Cases"
             value={activeCases}
             icon={Users}
-            caption="All patients in progress"
+            caption="All patients in pipeline"
             active={filter === 'all'}
             onClick={() => setFilter('all')}
           />
-          <KpiCard
-            label="Stuck > 5 Days"
-            value={stuckCount}
-            tone="alert"
-            icon={AlertTriangle}
-            caption={stuckCount === 0 ? 'All moving' : 'Needs intervention'}
+
+          <StuckKpi
+            count={stuckCount}
+            patients={stuckPatients}
             active={filter === 'stuck'}
             onClick={() => setFilter('stuck')}
           />
-          <KpiCard
+
+          <QuietKpi
             label="New This Week"
             value={newThisWeek}
             icon={Sparkles}
-            caption="Referred within 7 days"
+            caption="Referred in last 7 days"
             active={filter === 'new'}
             onClick={() => setFilter('new')}
           />
-          <KpiCard
-            label="Unread Messages"
-            value={unreadMessages}
-            tone="accent"
-            icon={Mail}
-            caption={unreadMessages === 0 ? 'Inbox clear' : 'Open inbox to reply'}
-            onClick={() => setInboxOpen(true)}
-          />
+
+          <UnreadKpi count={unreadMessages} />
         </section>
 
-        {/* Inline stuck summary (replaces the red banner) */}
-        {stuckCount > 0 && (
-          <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-            <span className="font-semibold uppercase tracking-wider text-red-700">
-              Stuck:
-            </span>
-            {stuckPatients.map((p, i) => (
-              <span key={p.id} className="inline-flex items-center">
-                <Link
-                  href={`/staff/${p.id}`}
-                  className="font-medium text-slate-700 transition hover:text-[#1a66cc]"
-                >
-                  {p.firstName} {p.lastName[0]}.
-                </Link>
-                <span className="ml-1 text-slate-500">({p.daysInStage}d)</span>
-                {i < stuckPatients.length - 1 && <span className="mx-1 text-slate-300">·</span>}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Stage filter tabs */}
-        <div className="mb-4 flex flex-wrap gap-1.5 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
-          <span className="inline-flex items-center rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Stage
-          </span>
+        {/* Stage filter */}
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
           {STAGE_FILTERS.map((f) => {
             const count = stageTabCounts[f.key];
             const isActive = filter === f.key;
@@ -324,29 +225,44 @@ export default function StaffDashboardPage() {
                 key={f.key}
                 type="button"
                 onClick={() => setFilter(f.key)}
-                className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium transition ${
+                className={clsx(
+                  'inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition',
                   isActive
-                    ? 'bg-[#3399e6] text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
+                    ? 'bg-[#1a66cc] text-white shadow-sm'
+                    : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300'
+                )}
               >
                 {f.label}
                 <span
-                  className={`rounded-full px-1.5 text-xs tabular-nums ${
+                  className={clsx(
+                    'rounded-full px-1.5 text-xs tabular-nums',
                     isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
-                  }`}
+                  )}
                 >
                   {count}
                 </span>
               </button>
             );
           })}
+          {(filter === 'all' ||
+            filter === 'stuck' ||
+            filter === 'new' ||
+            STAGE_FILTERS.some((f) => f.key === filter)) &&
+            filter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setFilter('all')}
+                className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-[#1a66cc]"
+              >
+                Clear filter
+              </button>
+            )}
         </div>
 
         {/* Patient table */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+            <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-5 py-3 text-left font-semibold">Patient</th>
                 <th className="px-4 py-3 text-left font-semibold">Referring Clinic</th>
@@ -359,7 +275,10 @@ export default function StaffDashboardPage() {
             <tbody className="divide-y divide-slate-100">
               {filteredPatients.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-500">
+                  <td
+                    colSpan={6}
+                    className="px-5 py-12 text-center text-sm text-slate-500"
+                  >
                     No patients match this filter.
                   </td>
                 </tr>
@@ -369,35 +288,50 @@ export default function StaffDashboardPage() {
                 return (
                   <tr
                     key={p.id}
-                    className="group cursor-pointer transition odd:bg-slate-50/40 hover:bg-[#f5faff]"
+                    className={clsx(
+                      'group relative cursor-pointer transition hover:bg-[#f5faff]',
+                      p.isStuck && 'bg-red-50/30'
+                    )}
                     onClick={() => router.push(`/staff/${p.id}`)}
                   >
-                    <td className="px-5 py-4">
+                    <td className="relative px-5 py-4">
+                      {p.isStuck && (
+                        <span
+                          aria-hidden
+                          className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-red-500"
+                        />
+                      )}
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-xs font-semibold text-white shadow-sm">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-xs font-semibold text-white shadow-sm">
                           {p.firstName[0]}
                           {p.lastName[0]}
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate font-semibold text-slate-900">
+                          <div className="flex items-center gap-2 truncate font-semibold text-slate-900">
                             {p.firstName} {p.lastName}
-                            {p.isStuck && (
-                              <StuckBadge days={p.daysInStage} className="ml-2 align-middle" />
-                            )}
+                            {p.isStuck && <StuckBadge days={p.daysInStage} />}
                           </div>
-                          <div className="truncate text-xs text-slate-500">
-                            {p.preferredLanguage} · {p.nephrologistName}
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                            <Stethoscope className="h-3 w-3 text-slate-400" />
+                            {p.nephrologistName}
+                            <span className="text-slate-300">·</span>
+                            <span>{p.preferredLanguage}</span>
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-4 text-slate-700">{p.referringClinic}</td>
+                    <td className="px-4 py-4 text-slate-700">
+                      {p.referringClinic}
+                    </td>
                     <td className="px-4 py-4">
                       <StatusPill stage={p.stage} />
                     </td>
                     <td className="px-4 py-4">
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ring-1 ring-inset ${daysInStageTone(p.daysInStage)}`}
+                        className={clsx(
+                          'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ring-1 ring-inset',
+                          daysInStageTone(p.daysInStage)
+                        )}
                       >
                         <Clock className="h-3 w-3" />
                         {p.daysInStage}d
@@ -428,8 +362,189 @@ export default function StaffDashboardPage() {
           </table>
         </div>
       </main>
+    </StaffShell>
+  );
+}
 
-      <InboxDrawer open={inboxOpen} onOpenChange={setInboxOpen} />
-    </div>
+function QuietKpi({
+  label,
+  value,
+  icon: Icon,
+  caption,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  icon: typeof Users;
+  caption: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'group flex flex-col rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:shadow-md',
+        active
+          ? 'border-[#3399e6] ring-2 ring-[#dbeeff]'
+          : 'border-slate-200 hover:border-[#3399e6]'
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          {label}
+        </span>
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eef6ff] text-[#1a66cc]">
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <div className="mt-3 text-4xl font-bold tabular-nums tracking-tight text-slate-900">
+        {value}
+      </div>
+      <div className="mt-1 text-xs text-slate-500">{caption}</div>
+    </button>
+  );
+}
+
+function StuckKpi({
+  count,
+  patients,
+  active,
+  onClick,
+}: {
+  count: number;
+  patients: Patient[];
+  active: boolean;
+  onClick: () => void;
+}) {
+  const hasStuck = count > 0;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'group flex flex-col rounded-2xl border p-5 text-left shadow-sm transition hover:shadow-md',
+        hasStuck
+          ? active
+            ? 'border-red-400 bg-red-50/80 ring-2 ring-red-100'
+            : 'border-red-200 bg-red-50/50 hover:border-red-300'
+          : active
+            ? 'border-emerald-300 bg-white ring-2 ring-emerald-100'
+            : 'border-slate-200 bg-white hover:border-emerald-300'
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span
+          className={clsx(
+            'text-xs font-semibold uppercase tracking-wider',
+            hasStuck ? 'text-red-700' : 'text-emerald-700'
+          )}
+        >
+          Stuck &gt; 5 Days
+        </span>
+        <span
+          className={clsx(
+            'flex h-9 w-9 items-center justify-center rounded-xl',
+            hasStuck ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600'
+          )}
+        >
+          {hasStuck ? (
+            <AlertTriangle className="h-4 w-4" />
+          ) : (
+            <CheckCircle2 className="h-4 w-4" />
+          )}
+        </span>
+      </div>
+      <div
+        className={clsx(
+          'mt-3 text-4xl font-bold tabular-nums tracking-tight',
+          hasStuck ? 'text-red-700' : 'text-slate-900'
+        )}
+      >
+        {count}
+      </div>
+      {hasStuck ? (
+        <ul className="mt-2 space-y-1">
+          {patients.slice(0, 3).map((p) => (
+            <li
+              key={p.id}
+              className="flex items-center justify-between gap-2 text-xs"
+            >
+              <Link
+                href={`/staff/${p.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="truncate font-medium text-red-800 underline-offset-2 hover:underline"
+              >
+                {p.firstName} {p.lastName}
+              </Link>
+              <span className="shrink-0 text-red-600">{p.daysInStage}d</span>
+            </li>
+          ))}
+          {patients.length > 3 && (
+            <li className="text-xs text-red-600">
+              +{patients.length - 3} more
+            </li>
+          )}
+        </ul>
+      ) : (
+        <div className="mt-1 text-xs text-emerald-700">
+          All cases moving on schedule
+        </div>
+      )}
+    </button>
+  );
+}
+
+function UnreadKpi({ count }: { count: number }) {
+  const hasUnread = count > 0;
+  return (
+    <Link
+      href="/staff/messages"
+      className={clsx(
+        'group flex flex-col rounded-2xl border p-5 text-left shadow-sm transition hover:shadow-md',
+        hasUnread
+          ? 'border-[#1a66cc] bg-gradient-to-br from-[#eef6ff] to-white hover:border-[#0f4fa8]'
+          : 'border-slate-200 bg-white hover:border-[#3399e6]'
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span
+          className={clsx(
+            'text-xs font-semibold uppercase tracking-wider',
+            hasUnread ? 'text-[#1a66cc]' : 'text-slate-500'
+          )}
+        >
+          Unread Messages
+        </span>
+        <span
+          className={clsx(
+            'flex h-9 w-9 items-center justify-center rounded-xl',
+            hasUnread ? 'bg-[#1a66cc] text-white' : 'bg-[#eef6ff] text-[#1a66cc]'
+          )}
+        >
+          <Inbox className="h-4 w-4" />
+        </span>
+      </div>
+      <div
+        className={clsx(
+          'mt-3 text-4xl font-bold tabular-nums tracking-tight',
+          hasUnread ? 'text-[#1a66cc]' : 'text-slate-900'
+        )}
+      >
+        {count}
+      </div>
+      <div className="mt-1 flex items-center gap-1 text-xs font-medium">
+        {hasUnread ? (
+          <>
+            <span className="text-[#1a66cc]">Open inbox to reply</span>
+            <ArrowRight className="h-3 w-3 text-[#1a66cc] transition group-hover:translate-x-0.5" />
+          </>
+        ) : (
+          <span className="text-slate-500">Inbox is clear</span>
+        )}
+      </div>
+    </Link>
   );
 }

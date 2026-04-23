@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -24,11 +24,11 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
-import { ShellHeader } from '@/components/ui/ShellHeader';
+import { clsx } from 'clsx';
+import { StaffShell, STAFF_CONTAINER } from '@/components/ui/StaffShell';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { StuckBadge } from '@/components/ui/StuckBadge';
 import { ThreadMessage } from '@/components/ui/ThreadMessage';
-import { InboxDrawer, InboxPill } from '@/components/InboxDrawer';
 import { useStore } from '@/lib/store';
 import type { Patient, PatientStage, ThreadKey, Todo } from '@/lib/types';
 
@@ -61,7 +61,6 @@ const TODO_TEMPLATES = [
 ];
 
 type MsgTab = 'patient' | 'clinic';
-type ComposeTarget = 'patient' | 'clinic';
 
 const MSG_THREAD: Record<MsgTab, ThreadKey> = {
   patient: 'tc-frontdesk',
@@ -157,9 +156,10 @@ function TodoRow({ todo }: { todo: Todo }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <p
-            className={`text-sm font-medium ${
+            className={clsx(
+              'text-sm font-medium',
               done ? 'text-slate-500 line-through' : 'text-slate-900'
-            }`}
+            )}
           >
             {todo.title}
           </p>
@@ -192,10 +192,9 @@ export default function StaffCaseDetailPage() {
   const advanceStage = useStore((s) => s.advancePatientStage);
 
   const [todoOpen, setTodoOpen] = useState(false);
-  const [msgOpen, setMsgOpen] = useState(false);
-  const [inboxOpen, setInboxOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<MsgTab>('patient');
   const [quickReply, setQuickReply] = useState('');
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const patientThread = useMemo(() => {
     if (!patient) return [];
@@ -229,6 +228,11 @@ export default function StaffCaseDetailPage() {
     }
   }, [patient, activeTab, patientThread, clinicThread, markThreadRead]);
 
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [activeTab, activeThread.length]);
+
   const activity = useMemo(
     () => (patient ? buildActivity(patient) : []),
     [patient]
@@ -236,13 +240,8 @@ export default function StaffCaseDetailPage() {
 
   if (!patient) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <ShellHeader
-          eyebrow="Front Desk · Case"
-          title="Case not found"
-          subtitle={caseId}
-        />
-        <main className="mx-auto max-w-2xl px-6 py-16 text-center">
+      <StaffShell>
+        <main className={clsx('py-16 text-center', STAFF_CONTAINER)}>
           <p className="text-sm text-slate-600">
             This case isn&apos;t in the current seed. Reset the demo or return to the dashboard.
           </p>
@@ -254,12 +253,16 @@ export default function StaffCaseDetailPage() {
             Back to dashboard
           </Link>
         </main>
-      </div>
+      </StaffShell>
     );
   }
 
   const pendingTodos = patient.todos.filter((t) => t.status === 'pending');
   const completedCount = patient.todos.length - pendingTodos.length;
+  const progressPct = patient.todos.length
+    ? Math.round((completedCount / patient.todos.length) * 100)
+    : 0;
+
   const nextStage = (() => {
     const idx = STAGE_FLOW.indexOf(patient.stage);
     if (idx === -1 || idx === STAGE_FLOW.length - 1) return null;
@@ -283,15 +286,9 @@ export default function StaffCaseDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <ShellHeader
-        eyebrow="ChristianaCare · Case Detail"
-        title={`${patient.firstName} ${patient.lastName}`}
-        subtitle={`DOB ${formatDob(patient.dob)} · ${patient.referringClinic}`}
-      />
-
-      <main className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-4 flex items-center justify-between">
+    <StaffShell>
+      <main className={clsx('py-6', STAFF_CONTAINER)}>
+        <div className="mb-4">
           <Link
             href="/staff"
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-[#1a66cc]"
@@ -299,58 +296,47 @@ export default function StaffCaseDetailPage() {
             <ChevronLeft className="h-3.5 w-3.5" />
             All Cases
           </Link>
-          <InboxPill onClick={() => setInboxOpen(true)} />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* LEFT COLUMN */}
-          <div className="space-y-6 lg:col-span-2">
-            {/* Header card */}
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex items-start justify-between gap-4 px-6 pt-6">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-lg font-semibold text-white shadow-md">
-                    {patient.firstName[0]}
-                    {patient.lastName[0]}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xl font-semibold text-slate-900">
-                        {patient.firstName} {patient.lastName}
-                      </h2>
-                      {patient.isStuck && <StuckBadge days={patient.daysInStage} />}
-                    </div>
-                    <p className="mt-0.5 text-sm text-slate-500">
-                      Referred {relativeTime(patient.referralDate)} by {patient.referringClinician}
-                    </p>
-                  </div>
-                </div>
-                <StatusPill stage={patient.stage} />
+        {/* Hero card — patient summary strip */}
+        <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-lg font-semibold text-white shadow-md">
+                {patient.firstName[0]}
+                {patient.lastName[0]}
               </div>
-              <div className="grid grid-cols-1 gap-x-8 gap-y-3 border-t border-slate-100 bg-slate-50/50 px-6 py-4 text-sm sm:grid-cols-2">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Phone className="h-4 w-4 text-slate-400" />
-                  {patient.phone}
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    {patient.firstName} {patient.lastName}
+                  </h2>
+                  {patient.isStuck && <StuckBadge days={patient.daysInStage} />}
                 </div>
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Mail className="h-4 w-4 text-slate-400" />
-                  {patient.email}
-                </div>
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Languages className="h-4 w-4 text-slate-400" />
-                  {patient.preferredLanguage}
-                </div>
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Clock className="h-4 w-4 text-slate-400" />
-                  {patient.daysInStage}d in current stage
-                </div>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Referred {relativeTime(patient.referralDate)} by {patient.referringClinician}
+                  {' · '}
+                  <span className="text-slate-600">{patient.referringClinic}</span>
+                </p>
               </div>
-            </section>
+            </div>
+            <div className="flex items-center gap-3">
+              <StatusPill stage={patient.stage} />
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                <Clock className="h-3.5 w-3.5" />
+                {patient.daysInStage}d in stage
+              </span>
+            </div>
+          </div>
+        </section>
 
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* LEFT COLUMN — case content */}
+          <div className="space-y-5 lg:col-span-7 xl:col-span-8">
             {isEmptyCase ? (
-              <section className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-10 text-center shadow-sm">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-50 text-violet-600 ring-1 ring-violet-100">
-                  <Sparkles className="h-5 w-5" />
+              <section className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-12 text-center shadow-sm">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-violet-50 text-violet-600 ring-1 ring-violet-100">
+                  <Sparkles className="h-6 w-6" />
                 </div>
                 <h3 className="mt-3 text-base font-semibold text-slate-900">
                   Just arrived
@@ -362,19 +348,29 @@ export default function StaffCaseDetailPage() {
               </section>
             ) : (
               <>
-                {/* TODOs card */}
+                {/* Onboarding & To-Dos */}
                 <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-base font-semibold text-slate-900">Onboarding & To-Dos</h3>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-base font-semibold text-slate-900">
+                        Onboarding & To-Dos
+                      </h3>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {completedCount} of {patient.todos.length} complete
                       </p>
+                      {patient.todos.length > 0 && (
+                        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-[#3399e6] to-[#1a66cc] transition-all"
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
                       onClick={() => setTodoOpen(true)}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-[#3399e6] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a66cc] transition hover:bg-[#eef6ff]"
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-[#3399e6] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a66cc] transition hover:bg-[#eef6ff]"
                     >
                       <PlusCircle className="h-3.5 w-3.5" />
                       Add To-Do
@@ -385,7 +381,7 @@ export default function StaffCaseDetailPage() {
                       No to-dos yet. Once this patient enters onboarding, the initial checklist will appear here.
                     </p>
                   ) : (
-                    <ul className="mt-3 divide-y divide-slate-100">
+                    <ul className="mt-4 divide-y divide-slate-100">
                       {patient.todos.map((t) => (
                         <TodoRow key={t.id} todo={t} />
                       ))}
@@ -393,26 +389,34 @@ export default function StaffCaseDetailPage() {
                   )}
                 </section>
 
-                {/* Documents card */}
+                {/* Documents */}
                 {patient.documents.length > 0 && (
                   <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <h3 className="text-base font-semibold text-slate-900">Documents</h3>
-                    <ul className="mt-3 space-y-2">
+                    <div className="flex items-baseline justify-between">
+                      <h3 className="text-base font-semibold text-slate-900">Documents</h3>
+                      <span className="text-xs text-slate-500">
+                        {patient.documents.length} file
+                        {patient.documents.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                       {patient.documents.map((d) => (
                         <li
                           key={d.id}
-                          className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5"
+                          className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-[#1a66cc] ring-1 ring-slate-200">
-                              <FileText className="h-4 w-4" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-slate-900">{d.name}</p>
-                              <p className="text-xs text-slate-500">
-                                Uploaded by {d.uploadedBy} · {relativeTime(d.uploadedAt)}
-                              </p>
-                            </div>
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-[#1a66cc] ring-1 ring-slate-200">
+                            <FileText className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-slate-900">
+                              {d.name}
+                            </p>
+                            <p className="truncate text-xs text-slate-500">
+                              {d.uploadedBy === 'patient' ? 'Patient upload' : 'Clinic upload'}
+                              {' · '}
+                              {relativeTime(d.uploadedAt)}
+                            </p>
                           </div>
                         </li>
                       ))}
@@ -420,7 +424,7 @@ export default function StaffCaseDetailPage() {
                   </section>
                 )}
 
-                {/* Activity timeline — state changes only (messages live in the Messages card) */}
+                {/* Activity Timeline */}
                 <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                   <h3 className="text-base font-semibold text-slate-900">Activity Timeline</h3>
                   {activity.length === 0 ? (
@@ -434,13 +438,18 @@ export default function StaffCaseDetailPage() {
                         return (
                           <li key={e.id} className="flex items-start gap-3">
                             <div
-                              className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1 ring-inset ${toneClasses(e.tone)}`}
+                              className={clsx(
+                                'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1 ring-inset',
+                                toneClasses(e.tone)
+                              )}
                             >
                               <Icon className="h-4 w-4" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-baseline justify-between gap-2">
-                                <p className="text-sm font-medium text-slate-800">{e.label}</p>
+                                <p className="text-sm font-medium text-slate-800">
+                                  {e.label}
+                                </p>
                                 <span className="shrink-0 text-xs text-slate-400">
                                   {relativeTime(e.at)}
                                 </span>
@@ -459,25 +468,32 @@ export default function StaffCaseDetailPage() {
             )}
           </div>
 
-          {/* RIGHT COLUMN: Messages → Quick Actions → Patient Details */}
-          <div className="space-y-6">
-            {/* Messages thread (tabbed) */}
+          {/* RIGHT COLUMN — Messages (primary), Patient, Actions */}
+          <div className="space-y-5 lg:col-span-5 xl:col-span-4">
+            {/* Messages — featured */}
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-                <h3 className="text-sm font-semibold text-slate-900">Messages</h3>
-                <span className="text-xs text-slate-400">
-                  {activeThread.length} {activeThread.length === 1 ? 'message' : 'messages'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-[#1a66cc]" />
+                  <h3 className="text-sm font-semibold text-slate-900">Messages</h3>
+                </div>
+                <Link
+                  href={`/staff/messages?patient=${patient.id}&thread=${activeTab}`}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-[#1a66cc]"
+                >
+                  Open in Messages
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
               </div>
-              <div className="flex border-b border-slate-100 bg-slate-50/60 px-2 pt-2">
-                <TabButton
+              <div className="flex gap-1 border-b border-slate-100 bg-slate-50/60 px-3 pt-2">
+                <MsgTabButton
                   active={activeTab === 'patient'}
                   unread={patientUnread}
                   onClick={() => setActiveTab('patient')}
                   icon={<MessageSquare className="h-3.5 w-3.5" />}
                   label="Patient"
                 />
-                <TabButton
+                <MsgTabButton
                   active={activeTab === 'clinic'}
                   unread={clinicUnread}
                   onClick={() => setActiveTab('clinic')}
@@ -485,31 +501,49 @@ export default function StaffCaseDetailPage() {
                   label="Clinic"
                 />
               </div>
-              <div className="max-h-[360px] space-y-2.5 overflow-y-auto bg-slate-50/40 px-4 py-4">
+              <div
+                ref={scrollRef}
+                className="h-[420px] space-y-2.5 overflow-y-auto bg-slate-50/40 px-4 py-4"
+              >
                 {activeThread.length === 0 ? (
-                  <p className="py-6 text-center text-xs text-slate-500">
-                    {activeTab === 'patient'
-                      ? 'No messages with the patient yet. Send the first one below.'
-                      : `No messages with ${patient.referringClinic} yet. Start the conversation below.`}
-                  </p>
+                  <div className="flex h-full flex-col items-center justify-center px-4 py-8 text-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <MessageSquare className="h-4 w-4" />
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">
+                      {activeTab === 'patient'
+                        ? 'No messages with the patient yet.'
+                        : `No messages with ${patient.referringClinic} yet.`}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Start the conversation below.
+                    </p>
+                  </div>
                 ) : (
-                  activeThread.map((m) => <ThreadMessage key={m.id} message={m} viewerRole="staff" />)
+                  activeThread.map((m) => (
+                    <ThreadMessage key={m.id} message={m} viewerRole="staff" />
+                  ))
                 )}
               </div>
               <form
                 onSubmit={handleQuickReply}
-                className="flex items-center gap-2 border-t border-slate-100 bg-white px-3 py-3"
+                className="flex items-end gap-2 border-t border-slate-100 bg-white px-3 py-3"
               >
-                <input
-                  type="text"
+                <textarea
                   value={quickReply}
                   onChange={(e) => setQuickReply(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+                    }
+                  }}
+                  rows={1}
                   placeholder={
                     activeTab === 'patient'
-                      ? 'Quick reply to patient…'
-                      : 'Quick reply to clinic…'
+                      ? `Reply to ${patient.firstName}…`
+                      : `Reply to ${patient.referringClinic}…`
                   }
-                  className="h-10 flex-1 rounded-xl border border-slate-200 bg-slate-50/60 px-3 text-sm outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
+                  className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
                 />
                 <button
                   type="submit"
@@ -522,99 +556,86 @@ export default function StaffCaseDetailPage() {
               </form>
             </section>
 
-            {/* Quick actions */}
+            {/* Patient info — merged */}
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900">Quick Actions</h3>
-              <div className="mt-3 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setMsgOpen(true)}
-                  className="inline-flex w-full items-center justify-between gap-2 rounded-xl bg-[#3399e6] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a66cc]"
+              <h3 className="text-sm font-semibold text-slate-900">Patient</h3>
+              <dl className="mt-3 space-y-3 text-sm">
+                <InfoRow icon={<Phone className="h-3.5 w-3.5" />} label="Phone">
+                  {patient.phone}
+                </InfoRow>
+                <InfoRow icon={<Mail className="h-3.5 w-3.5" />} label="Email">
+                  {patient.email}
+                </InfoRow>
+                <InfoRow label="DOB">{formatDob(patient.dob)}</InfoRow>
+                <InfoRow
+                  icon={<Languages className="h-3.5 w-3.5" />}
+                  label="Language"
                 >
-                  <span className="inline-flex items-center gap-2">
-                    <Send className="h-4 w-4" />
-                    Compose Message
-                  </span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => advanceStage(patient.id)}
-                  disabled={!nextStage}
-                  className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  {patient.preferredLanguage}
+                </InfoRow>
+                <InfoRow
+                  icon={<Building2 className="h-3.5 w-3.5" />}
+                  label="Clinic"
                 >
-                  <span className="inline-flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    Mark Stage Complete
-                  </span>
-                  {nextStage ? (
-                    <span className="text-xs text-slate-500">
-                      → {STAGE_LABEL[nextStage]}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-400">final</span>
-                  )}
-                </button>
+                  {patient.referringClinic}
+                </InfoRow>
+                <InfoRow label="DUSW">{patient.duswName}</InfoRow>
+                <InfoRow
+                  icon={<Stethoscope className="h-3.5 w-3.5" />}
+                  label="Nephrologist"
+                >
+                  {patient.nephrologistName}
+                </InfoRow>
+              </dl>
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                {patient.emergencyContact ? (
+                  <div className="rounded-xl bg-emerald-50/60 p-3 ring-1 ring-emerald-100">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800">
+                      <Shield className="h-3.5 w-3.5" />
+                      Emergency Contact
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-emerald-900">
+                      {patient.emergencyContact.name}
+                    </div>
+                    <div className="text-xs text-emerald-700">
+                      {patient.emergencyContact.phone} · {patient.emergencyContact.email}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl bg-amber-50/80 p-3 text-xs text-amber-800 ring-1 ring-amber-100">
+                    <UserPlus className="h-3.5 w-3.5" />
+                    No emergency contact on file.
+                  </div>
+                )}
               </div>
             </section>
 
-            {/* Patient details */}
+            {/* Stage action */}
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900">Patient Details</h3>
-              <dl className="mt-3 space-y-2 text-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                    Preferred language
-                  </dt>
-                  <dd className="text-slate-800">{patient.preferredLanguage}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                    Dialysis clinic
-                  </dt>
-                  <dd className="text-right text-slate-800">{patient.referringClinic}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                    DUSW
-                  </dt>
-                  <dd className="text-right text-slate-800">{patient.duswName}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                    Nephrologist
-                  </dt>
-                  <dd className="flex items-center gap-1.5 text-right text-slate-800">
-                    <Stethoscope className="h-3.5 w-3.5 text-slate-400" />
-                    {patient.nephrologistName}
-                  </dd>
-                </div>
-              </dl>
-              {patient.emergencyContact ? (
-                <div className="mt-4 rounded-xl bg-emerald-50/60 p-3 ring-1 ring-emerald-100">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800">
-                    <Shield className="h-3.5 w-3.5" />
-                    Emergency Contact
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-emerald-900">
-                    {patient.emergencyContact.name}
-                  </div>
-                  <div className="text-xs text-emerald-700">
-                    {patient.emergencyContact.phone} · {patient.emergencyContact.email}
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-50/80 p-3 text-xs text-amber-800 ring-1 ring-amber-100">
-                  <UserPlus className="h-3.5 w-3.5" />
-                  No emergency contact on file.
-                </div>
-              )}
+              <h3 className="text-sm font-semibold text-slate-900">Stage</h3>
+              <button
+                type="button"
+                onClick={() => advanceStage(patient.id)}
+                disabled={!nextStage}
+                className="mt-3 inline-flex w-full items-center justify-between gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-emerald-600 hover:to-emerald-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Mark Stage Complete
+                </span>
+                {nextStage ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-white/80">
+                    → {STAGE_LABEL[nextStage]}
+                  </span>
+                ) : (
+                  <span className="text-xs text-white/80">Final stage</span>
+                )}
+              </button>
             </section>
           </div>
         </div>
       </main>
 
-      {/* Add TODO modal */}
       {todoOpen && (
         <AddTodoModal
           onClose={() => setTodoOpen(false)}
@@ -624,29 +645,31 @@ export default function StaffCaseDetailPage() {
           }}
         />
       )}
+    </StaffShell>
+  );
+}
 
-      {/* Compose Message modal with recipient picker */}
-      {msgOpen && (
-        <SendMessageModal
-          patientLabel={`${patient.firstName} ${patient.lastName}`}
-          clinicLabel={patient.referringClinic}
-          initialTarget={activeTab}
-          onClose={() => setMsgOpen(false)}
-          onSubmit={(target, subject, body) => {
-            const combined = subject ? `${subject}\n\n${body}` : body;
-            sendMessage(patient.id, 'staff', combined, MSG_THREAD[target]);
-            setActiveTab(target);
-            setMsgOpen(false);
-          }}
-        />
-      )}
-
-      <InboxDrawer open={inboxOpen} onOpenChange={setInboxOpen} />
+function InfoRow({
+  icon,
+  label,
+  children,
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-slate-500">
+        {icon}
+        {label}
+      </dt>
+      <dd className="text-right text-sm text-slate-800">{children}</dd>
     </div>
   );
 }
 
-function TabButton({
+function MsgTabButton({
   active,
   unread,
   onClick,
@@ -663,11 +686,12 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative inline-flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-semibold transition ${
+      className={clsx(
+        'relative inline-flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-semibold transition',
         active
           ? 'bg-white text-[#1a66cc] ring-1 ring-slate-100'
           : 'text-slate-500 hover:text-slate-700'
-      }`}
+      )}
     >
       {icon}
       {label}
@@ -777,142 +801,6 @@ function AddTodoModal({
               <PlusCircle className="h-4 w-4" />
               Add To-Do
               <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function SendMessageModal({
-  patientLabel,
-  clinicLabel,
-  initialTarget,
-  onClose,
-  onSubmit,
-}: {
-  patientLabel: string;
-  clinicLabel: string;
-  initialTarget: ComposeTarget;
-  onClose: () => void;
-  onSubmit: (target: ComposeTarget, subject: string, body: string) => void;
-}) {
-  const [target, setTarget] = useState<ComposeTarget>(initialTarget);
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!body.trim()) return;
-    onSubmit(target, subject.trim(), body.trim());
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <h3 className="text-base font-semibold text-slate-900">Compose Message</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              To
-            </span>
-            <div className="mt-1.5 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setTarget('patient')}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
-                  target === 'patient'
-                    ? 'border-[#3399e6] bg-[#eef6ff] text-[#0f3e80] ring-2 ring-[#dbeeff]'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                <MessageSquare className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="block text-[10px] font-semibold uppercase tracking-wider opacity-70">
-                    Patient
-                  </span>
-                  <span className="block truncate font-medium">{patientLabel}</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTarget('clinic')}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
-                  target === 'clinic'
-                    ? 'border-violet-400 bg-violet-50 text-violet-900 ring-2 ring-violet-100'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                <Building2 className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="block text-[10px] font-semibold uppercase tracking-wider opacity-70">
-                    Dialysis Clinic
-                  </span>
-                  <span className="block truncate font-medium">{clinicLabel}</span>
-                </span>
-              </button>
-            </div>
-          </div>
-          <label className="block space-y-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Subject (optional)
-            </span>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="What is this about?"
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
-            />
-          </label>
-          <label className="block space-y-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Message *
-            </span>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={5}
-              placeholder={
-                target === 'patient'
-                  ? 'Write a message to the patient…'
-                  : 'Write a message to the dialysis clinic…'
-              }
-              className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
-              autoFocus
-            />
-          </label>
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!body.trim()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#3399e6] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a66cc] disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              <Send className="h-4 w-4" />
-              Send Message
             </button>
           </div>
         </form>

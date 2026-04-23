@@ -10,6 +10,7 @@ interface ShellHeaderProps {
   subtitle?: string;
   className?: string;
   accent?: 'blue' | 'navy';
+  containerClassName?: string;
 }
 
 export function ShellHeader({
@@ -18,6 +19,7 @@ export function ShellHeader({
   subtitle,
   className,
   accent = 'blue',
+  containerClassName = 'max-w-7xl',
 }: ShellHeaderProps) {
   const accentClass =
     accent === 'navy'
@@ -32,7 +34,12 @@ export function ShellHeader({
       )}
     >
       <div className={clsx('h-1 w-full', accentClass)} />
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
+      <div
+        className={clsx(
+          'mx-auto flex items-center justify-between gap-4 px-6 py-4 lg:px-10 xl:px-12',
+          containerClassName
+        )}
+      >
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {eyebrow}
