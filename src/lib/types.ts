@@ -132,5 +132,6 @@ export interface DemoState {
     source: 'patient' | 'clinic'
   ) => void;
   setCurrentPatient: (patientId: string) => void;
+  advancePatientStage: (patientId: string) => void;
   resetDemo: () => void;
 }

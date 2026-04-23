@@ -381,6 +381,34 @@ export const useStore = create<DemoState>()(
         set({ currentPatientId: patientId });
       },
 
+      advancePatientStage: (patientId) => {
+        const STAGE_ORDER: Patient['stage'][] = [
+          'new-referral',
+          'patient-onboarding',
+          'initial-todos',
+          'front-desk-review',
+          'screening',
+          'records-collection',
+          'specialist-review',
+          'scheduled',
+        ];
+        const now = new Date().toISOString();
+        set({
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId) return p;
+            const idx = STAGE_ORDER.indexOf(p.stage);
+            if (idx === -1 || idx === STAGE_ORDER.length - 1) return p;
+            return {
+              ...p,
+              stage: STAGE_ORDER[idx + 1],
+              daysInStage: 0,
+              isStuck: false,
+              lastActivityAt: now,
+            };
+          }),
+        });
+      },
+
       resetDemo: () => {
         if (typeof window === 'undefined') return;
         window.localStorage.removeItem(STORAGE_KEY);
