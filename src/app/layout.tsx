@@ -2,8 +2,9 @@ import type { Metadata } from 'next';
 import '@/styles/globals.css';
 
 export const metadata: Metadata = {
-  title: 'Patient Portal Prototype',
-  description: 'Mobile-first patient portal prototype',
+  title: 'ChristianaCare Transplant Referral Prototype',
+  description:
+    'Demo prototype — patient, Front Desk, and dialysis clinic views of the transplant referral platform.',
 };
 
 export default function RootLayout({
