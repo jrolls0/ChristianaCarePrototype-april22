@@ -2685,7 +2685,9 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
   const [dontKnowEgfr, setDontKnowEgfr] = useState(false);
   const [heightFeet, setHeightFeet] = useState('');
   const [heightInches, setHeightInches] = useState('');
+  const [dontKnowHeight, setDontKnowHeight] = useState(false);
   const [weightPounds, setWeightPounds] = useState('');
+  const [dontKnowWeight, setDontKnowWeight] = useState(false);
   const [isCitizenOrResident, setIsCitizenOrResident] = useState<TernaryChoice>('');
 
   const [needsMultiOrganTransplant, setNeedsMultiOrganTransplant] = useState<TernaryChoice>('');
@@ -2696,17 +2698,65 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
   const [hasOpenWounds, setHasOpenWounds] = useState<TernaryChoice>('');
   const [otherConcerns, setOtherConcerns] = useState('');
 
+  const [showStep1Validation, setShowStep1Validation] = useState(false);
+  const [showStep2Validation, setShowStep2Validation] = useState(false);
+
   const needsDialysisStart = onDialysis === 'yes';
   const isValidNumber = (v: string) => v.trim() !== '' && !isNaN(Number(v)) && Number(v) > 0;
-  const weightError = weightPounds.trim() !== '' && !isValidNumber(weightPounds);
-  const eGFRError = !dontKnowEgfr && eGFR.trim() !== '' && !isValidNumber(eGFR);
+
+  const eGFRFormatError = !dontKnowEgfr && eGFR.trim() !== '' && !isValidNumber(eGFR);
+  const weightFormatError = !dontKnowWeight && weightPounds.trim() !== '' && !isValidNumber(weightPounds);
+
+  const step1Valid =
+    onDialysis !== '' &&
+    (!needsDialysisStart || (dialysisStartMonth !== '' && dialysisStartYear !== '')) &&
+    (dontKnowEgfr || (eGFR.trim() !== '' && isValidNumber(eGFR))) &&
+    (dontKnowHeight || (heightFeet !== '' && heightInches !== '')) &&
+    (dontKnowWeight || (weightPounds.trim() !== '' && isValidNumber(weightPounds))) &&
+    isCitizenOrResident !== '';
+
+  const step2Valid =
+    needsMultiOrganTransplant !== '' &&
+    usesSupplementalOxygen !== '' &&
+    cardiacSurgeryLast6Months !== '' &&
+    activeCancer !== '' &&
+    activeSubstanceUse !== '' &&
+    hasOpenWounds !== '';
+
+  const err1 = {
+    dialysis: showStep1Validation && onDialysis === '',
+    dialysisStart: showStep1Validation && needsDialysisStart && (dialysisStartMonth === '' || dialysisStartYear === ''),
+    egfr: showStep1Validation && !dontKnowEgfr && eGFR.trim() === '',
+    egfrFormat: eGFRFormatError,
+    height: showStep1Validation && !dontKnowHeight && (heightFeet === '' || heightInches === ''),
+    weight: showStep1Validation && !dontKnowWeight && weightPounds.trim() === '',
+    weightFormat: weightFormatError,
+    citizenship: showStep1Validation && isCitizenOrResident === '',
+  };
+  const err2 = {
+    multiOrgan: showStep2Validation && needsMultiOrganTransplant === '',
+    oxygen: showStep2Validation && usesSupplementalOxygen === '',
+    cardiac: showStep2Validation && cardiacSurgeryLast6Months === '',
+    cancer: showStep2Validation && activeCancer === '',
+    substance: showStep2Validation && activeSubstanceUse === '',
+    wounds: showStep2Validation && hasOpenWounds === '',
+  };
 
   function handleContinue() {
-    if (weightError || eGFRError) return;
+    if (!step1Valid || eGFRFormatError || weightFormatError) {
+      setShowStep1Validation(true);
+      return;
+    }
+    setShowStep1Validation(false);
     setCurrentStep(2);
   }
 
   function handleSubmit() {
+    if (!step2Valid) {
+      setShowStep2Validation(true);
+      return;
+    }
+    setShowStep2Validation(false);
     onComplete();
   }
 
@@ -2752,7 +2802,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                   { label: "I'm not sure", value: 'notSure' },
                 ]}
                 value={onDialysis}
-                hasError={false}
+                hasError={err1.dialysis}
                 onValueChange={(value) => setOnDialysis(value as TernaryChoice)}
               />
             </div>
@@ -2771,7 +2821,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                     <select
                       value={dialysisStartMonth}
                       onChange={(event) => setDialysisStartMonth(event.target.value)}
-                      className={fieldClassName(false)}
+                      className={fieldClassName(err1.dialysisStart)}
                     >
                       <option value="">Month</option>
                       {QUESTIONNAIRE_MONTH_OPTIONS.map((month) => (
@@ -2783,7 +2833,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                     <select
                       value={dialysisStartYear}
                       onChange={(event) => setDialysisStartYear(event.target.value)}
-                      className={fieldClassName(false)}
+                      className={fieldClassName(err1.dialysisStart)}
                     >
                       <option value="">Year</option>
                       {QUESTIONNAIRE_YEAR_OPTIONS.map((year) => (
@@ -2813,9 +2863,10 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 value={eGFR}
                 onChange={(event) => setEGFR(event.target.value)}
                 disabled={dontKnowEgfr}
-                className={fieldClassName(eGFRError, dontKnowEgfr)}
+                className={fieldClassName(err1.egfr || err1.egfrFormat, dontKnowEgfr)}
               />
-              {eGFRError && <p className="text-xs font-medium text-red-600">Please enter a valid number.</p>}
+              {err1.egfr && <p className="text-xs font-medium text-red-600">Please enter your eGFR or check "I don't know."</p>}
+              {err1.egfrFormat && <p className="text-xs font-medium text-red-600">Please enter a valid number.</p>}
               <button
                 type="button"
                 onClick={() =>
@@ -2843,7 +2894,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your height?</p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <select value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} className={fieldClassName(false)}>
+                  <select value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} disabled={dontKnowHeight} className={fieldClassName(err1.height, dontKnowHeight)}>
                     <option value="">Feet</option>
                     {QUESTIONNAIRE_HEIGHT_FEET_OPTIONS.map((feet) => (
                       <option key={feet} value={feet}>
@@ -2857,7 +2908,8 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                   <select
                     value={heightInches}
                     onChange={(event) => setHeightInches(event.target.value)}
-                    className={fieldClassName(false)}
+                    disabled={dontKnowHeight}
+                    className={fieldClassName(err1.height, dontKnowHeight)}
                   >
                     <option value="">Inches</option>
                     {QUESTIONNAIRE_HEIGHT_INCH_OPTIONS.map((inches) => (
@@ -2869,6 +2921,17 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                   <p className="text-[11px] text-slate-500">in</p>
                 </div>
               </div>
+              {err1.height && <p className="text-xs font-medium text-red-600">Please select your height or check "I don't know."</p>}
+              <button
+                type="button"
+                onClick={() => setDontKnowHeight((prev) => { if (!prev) { setHeightFeet(''); setHeightInches(''); } return !prev; })}
+                className="inline-flex items-center gap-2 text-sm text-slate-700"
+              >
+                <span className={`flex h-4 w-4 items-center justify-center rounded border ${dontKnowHeight ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'}`}>
+                  {dontKnowHeight && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+                </span>
+                I don&apos;t know my height
+              </button>
             </div>
 
             <div className="space-y-1.5">
@@ -2878,9 +2941,21 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 inputMode="decimal"
                 value={weightPounds}
                 onChange={(event) => setWeightPounds(event.target.value)}
-                className={fieldClassName(weightError)}
+                disabled={dontKnowWeight}
+                className={fieldClassName(err1.weight || err1.weightFormat, dontKnowWeight)}
               />
-              {weightError && <p className="text-xs font-medium text-red-600">Please enter a valid weight.</p>}
+              {err1.weight && <p className="text-xs font-medium text-red-600">Please enter your weight or check "I don't know."</p>}
+              {err1.weightFormat && <p className="text-xs font-medium text-red-600">Please enter a valid weight.</p>}
+              <button
+                type="button"
+                onClick={() => setDontKnowWeight((prev) => { if (!prev) setWeightPounds(''); return !prev; })}
+                className="inline-flex items-center gap-2 text-sm text-slate-700"
+              >
+                <span className={`flex h-4 w-4 items-center justify-center rounded border ${dontKnowWeight ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'}`}>
+                  {dontKnowWeight && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+                </span>
+                I don&apos;t know my weight
+              </button>
             </div>
 
             <div className="h-px bg-[#e3ebf5]" />
@@ -2895,11 +2970,15 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                   { label: "I'm not sure", value: 'notSure' },
                 ]}
                 value={isCitizenOrResident}
-                hasError={false}
+                hasError={err1.citizenship}
                 onValueChange={(value) => setIsCitizenOrResident(value as TernaryChoice)}
               />
             </div>
           </div>
+
+          {showStep1Validation && !step1Valid && (
+            <p className="text-xs font-medium text-red-600">Please complete all required fields to continue.</p>
+          )}
 
           <div className="flex justify-end">
             <button
@@ -2934,7 +3013,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: "I'm not sure", value: 'notSure' },
               ]}
               value={needsMultiOrganTransplant}
-              hasError={false}
+              hasError={err2.multiOrgan}
               onValueChange={(value) => setNeedsMultiOrganTransplant(value as TernaryChoice)}
             />
 
@@ -2947,7 +3026,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: "I'm not sure", value: 'notSure' },
               ]}
               value={usesSupplementalOxygen}
-              hasError={false}
+              hasError={err2.oxygen}
               onValueChange={(value) => setUsesSupplementalOxygen(value as TernaryChoice)}
             />
 
@@ -2960,7 +3039,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: "I'm not sure", value: 'notSure' },
               ]}
               value={cardiacSurgeryLast6Months}
-              hasError={false}
+              hasError={err2.cardiac}
               onValueChange={(value) => setCardiacSurgeryLast6Months(value as TernaryChoice)}
             />
 
@@ -2979,7 +3058,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: "I'm not sure", value: 'notSure' },
               ]}
               value={activeCancer}
-              hasError={false}
+              hasError={err2.cancer}
               onValueChange={(value) => setActiveCancer(value as TernaryChoice)}
             />
 
@@ -2993,7 +3072,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: 'Prefer not to answer', value: 'preferNotToAnswer' },
               ]}
               value={activeSubstanceUse}
-              hasError={false}
+              hasError={err2.substance}
               onValueChange={(value) => setActiveSubstanceUse(value as SubstanceChoice)}
             />
 
@@ -3006,7 +3085,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: "I'm not sure", value: 'notSure' },
               ]}
               value={hasOpenWounds}
-              hasError={false}
+              hasError={err2.wounds}
               onValueChange={(value) => setHasOpenWounds(value as TernaryChoice)}
             />
           </div>
@@ -3024,6 +3103,10 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
               className="w-full rounded-xl border border-[#d8e4f1] bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
             />
           </label>
+
+          {showStep2Validation && !step2Valid && (
+            <p className="text-xs font-medium text-red-600">Please answer all questions before submitting.</p>
+          )}
 
           <div className="flex items-center justify-between gap-2">
             <button
