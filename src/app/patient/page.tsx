@@ -179,7 +179,7 @@ const MOCK_TODOS: MockTodo[] = [
   {
     id: 'todo-3',
     title: 'Complete Health Questionnaire',
-    description: 'Answer required transplant eligibility questions.',
+    description: 'Answer a few questions to help us prepare for your evaluation.',
     status: 'pending',
     priority: 'low',
     type: 'healthQuestionnaire',
@@ -2678,7 +2678,7 @@ function QuestionnaireRadioCard({
 function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
   const [currentStep, setCurrentStep] = useState<QuestionnaireStep>(1);
 
-  const [onDialysis, setOnDialysis] = useState<BinaryChoice>('');
+  const [onDialysis, setOnDialysis] = useState<TernaryChoice>('');
   const [dialysisStartMonth, setDialysisStartMonth] = useState('');
   const [dialysisStartYear, setDialysisStartYear] = useState('');
   const [eGFR, setEGFR] = useState('');
@@ -2689,63 +2689,25 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
   const [isCitizenOrResident, setIsCitizenOrResident] = useState<TernaryChoice>('');
 
   const [needsMultiOrganTransplant, setNeedsMultiOrganTransplant] = useState<TernaryChoice>('');
-  const [usesSupplementalOxygen, setUsesSupplementalOxygen] = useState<BinaryChoice>('');
+  const [usesSupplementalOxygen, setUsesSupplementalOxygen] = useState<TernaryChoice>('');
   const [cardiacSurgeryLast6Months, setCardiacSurgeryLast6Months] = useState<TernaryChoice>('');
-  const [activeCancer, setActiveCancer] = useState<BinaryChoice>('');
+  const [activeCancer, setActiveCancer] = useState<TernaryChoice>('');
   const [activeSubstanceUse, setActiveSubstanceUse] = useState<SubstanceChoice>('');
-  const [hasOpenWounds, setHasOpenWounds] = useState<BinaryChoice>('');
+  const [hasOpenWounds, setHasOpenWounds] = useState<TernaryChoice>('');
   const [otherConcerns, setOtherConcerns] = useState('');
 
-  const [showStep1Validation, setShowStep1Validation] = useState(false);
-  const [showStep2Validation, setShowStep2Validation] = useState(false);
+  const [weightBadInput, setWeightBadInput] = useState(false);
+  const [eGFRBadInput, setEGFRBadInput] = useState(false);
 
   const needsDialysisStart = onDialysis === 'yes';
-  const step1Valid =
-    onDialysis !== '' &&
-    (!needsDialysisStart || (dialysisStartMonth !== '' && dialysisStartYear !== '')) &&
-    heightFeet !== '' &&
-    heightInches !== '' &&
-    weightPounds.trim().length > 0 &&
-    isCitizenOrResident !== '';
-  const step2Valid =
-    needsMultiOrganTransplant !== '' &&
-    usesSupplementalOxygen !== '' &&
-    cardiacSurgeryLast6Months !== '' &&
-    activeCancer !== '' &&
-    activeSubstanceUse !== '' &&
-    hasOpenWounds !== '';
-
-  const step1Error = {
-    dialysisStatus: showStep1Validation && onDialysis === '',
-    dialysisStart: showStep1Validation && needsDialysisStart && (dialysisStartMonth === '' || dialysisStartYear === ''),
-    height: showStep1Validation && (heightFeet === '' || heightInches === ''),
-    weight: showStep1Validation && weightPounds.trim().length === 0,
-    citizenship: showStep1Validation && isCitizenOrResident === '',
-  };
-  const step2Error = {
-    multiOrgan: showStep2Validation && needsMultiOrganTransplant === '',
-    oxygen: showStep2Validation && usesSupplementalOxygen === '',
-    cardiac: showStep2Validation && cardiacSurgeryLast6Months === '',
-    cancer: showStep2Validation && activeCancer === '',
-    substance: showStep2Validation && activeSubstanceUse === '',
-    wounds: showStep2Validation && hasOpenWounds === '',
-  };
+  const weightError = weightBadInput;
+  const eGFRError = !dontKnowEgfr && eGFRBadInput;
 
   function handleContinue() {
-    if (!step1Valid) {
-      setShowStep1Validation(true);
-      return;
-    }
-    setShowStep1Validation(false);
     setCurrentStep(2);
   }
 
   function handleSubmit() {
-    if (!step2Valid) {
-      setShowStep2Validation(true);
-      return;
-    }
-    setShowStep2Validation(false);
     onComplete();
   }
 
@@ -2782,16 +2744,17 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
 
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you currently on dialysis? *</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you currently on dialysis?</p>
               <QuestionnaireInlineChoiceGroup
                 name="dialysis-status"
                 options={[
                   { label: 'Yes', value: 'yes' },
                   { label: 'No', value: 'no' },
+                  { label: "I'm not sure", value: 'notSure' },
                 ]}
                 value={onDialysis}
-                hasError={step1Error.dialysisStatus}
-                onValueChange={(value) => setOnDialysis(value as BinaryChoice)}
+                hasError={false}
+                onValueChange={(value) => setOnDialysis(value as TernaryChoice)}
               />
             </div>
 
@@ -2801,7 +2764,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">When did you start dialysis? *</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">When did you start dialysis?</p>
                     <CircleHelp className="h-3.5 w-3.5 text-[#3380cc]" />
                   </div>
                   <p className="text-xs text-slate-500">(Approximate month and year is fine)</p>
@@ -2809,7 +2772,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                     <select
                       value={dialysisStartMonth}
                       onChange={(event) => setDialysisStartMonth(event.target.value)}
-                      className={fieldClassName(step1Error.dialysisStart)}
+                      className={fieldClassName(false)}
                     >
                       <option value="">Month</option>
                       {QUESTIONNAIRE_MONTH_OPTIONS.map((month) => (
@@ -2821,7 +2784,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                     <select
                       value={dialysisStartYear}
                       onChange={(event) => setDialysisStartYear(event.target.value)}
-                      className={fieldClassName(step1Error.dialysisStart)}
+                      className={fieldClassName(false)}
                     >
                       <option value="">Year</option>
                       {QUESTIONNAIRE_YEAR_OPTIONS.map((year) => (
@@ -2848,10 +2811,14 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
               <input
                 type="number"
                 value={eGFR}
-                onChange={(event) => setEGFR(event.target.value)}
+                onChange={(event) => {
+                  setEGFR(event.target.value);
+                  setEGFRBadInput(event.target.validity.badInput);
+                }}
                 disabled={dontKnowEgfr}
-                className={fieldClassName(false, dontKnowEgfr)}
+                className={fieldClassName(eGFRError, dontKnowEgfr)}
               />
+              {eGFRError && <p className="text-xs font-medium text-red-600">Please enter a valid number.</p>}
               <button
                 type="button"
                 onClick={() =>
@@ -2876,10 +2843,10 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
             <div className="h-px bg-[#e3ebf5]" />
 
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your height? *</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your height?</p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <select value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} className={fieldClassName(step1Error.height)}>
+                  <select value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} className={fieldClassName(false)}>
                     <option value="">Feet</option>
                     {QUESTIONNAIRE_HEIGHT_FEET_OPTIONS.map((feet) => (
                       <option key={feet} value={feet}>
@@ -2893,7 +2860,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                   <select
                     value={heightInches}
                     onChange={(event) => setHeightInches(event.target.value)}
-                    className={fieldClassName(step1Error.height)}
+                    className={fieldClassName(false)}
                   >
                     <option value="">Inches</option>
                     {QUESTIONNAIRE_HEIGHT_INCH_OPTIONS.map((inches) => (
@@ -2908,19 +2875,23 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
             </div>
 
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your weight (in pounds)? *</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your weight (in pounds)?</p>
               <input
                 type="number"
                 value={weightPounds}
-                onChange={(event) => setWeightPounds(event.target.value)}
-                className={fieldClassName(step1Error.weight)}
+                onChange={(event) => {
+                  setWeightPounds(event.target.value);
+                  setWeightBadInput(event.target.validity.badInput);
+                }}
+                className={fieldClassName(weightError)}
               />
+              {weightError && <p className="text-xs font-medium text-red-600">Please enter a valid weight.</p>}
             </div>
 
             <div className="h-px bg-[#e3ebf5]" />
 
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you a U.S. citizen or legal resident? *</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you a U.S. citizen or legal resident?</p>
               <QuestionnaireInlineChoiceGroup
                 name="citizenship-status"
                 options={[
@@ -2929,15 +2900,11 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                   { label: "I'm not sure", value: 'notSure' },
                 ]}
                 value={isCitizenOrResident}
-                hasError={step1Error.citizenship}
+                hasError={false}
                 onValueChange={(value) => setIsCitizenOrResident(value as TernaryChoice)}
               />
             </div>
           </div>
-
-          {showStep1Validation && !step1Valid && (
-            <p className="text-xs font-medium text-red-600">Please complete all required fields to continue.</p>
-          )}
 
           <div className="flex justify-end">
             <button
@@ -2972,7 +2939,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: "I'm not sure", value: 'notSure' },
               ]}
               value={needsMultiOrganTransplant}
-              hasError={step2Error.multiOrgan}
+              hasError={false}
               onValueChange={(value) => setNeedsMultiOrganTransplant(value as TernaryChoice)}
             />
 
@@ -2982,10 +2949,11 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
               options={[
                 { label: 'Yes', value: 'yes' },
                 { label: 'No', value: 'no' },
+                { label: "I'm not sure", value: 'notSure' },
               ]}
               value={usesSupplementalOxygen}
-              hasError={step2Error.oxygen}
-              onValueChange={(value) => setUsesSupplementalOxygen(value as BinaryChoice)}
+              hasError={false}
+              onValueChange={(value) => setUsesSupplementalOxygen(value as TernaryChoice)}
             />
 
             <QuestionnaireRadioCard
@@ -2997,7 +2965,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: "I'm not sure", value: 'notSure' },
               ]}
               value={cardiacSurgeryLast6Months}
-              hasError={step2Error.cardiac}
+              hasError={false}
               onValueChange={(value) => setCardiacSurgeryLast6Months(value as TernaryChoice)}
             />
 
@@ -3013,10 +2981,11 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
               options={[
                 { label: 'Yes', value: 'yes' },
                 { label: 'No', value: 'no' },
+                { label: "I'm not sure", value: 'notSure' },
               ]}
               value={activeCancer}
-              hasError={step2Error.cancer}
-              onValueChange={(value) => setActiveCancer(value as BinaryChoice)}
+              hasError={false}
+              onValueChange={(value) => setActiveCancer(value as TernaryChoice)}
             />
 
             <QuestionnaireRadioCard
@@ -3029,7 +2998,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: 'Prefer not to answer', value: 'preferNotToAnswer' },
               ]}
               value={activeSubstanceUse}
-              hasError={step2Error.substance}
+              hasError={false}
               onValueChange={(value) => setActiveSubstanceUse(value as SubstanceChoice)}
             />
 
@@ -3039,10 +3008,11 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
               options={[
                 { label: 'Yes', value: 'yes' },
                 { label: 'No', value: 'no' },
+                { label: "I'm not sure", value: 'notSure' },
               ]}
               value={hasOpenWounds}
-              hasError={step2Error.wounds}
-              onValueChange={(value) => setHasOpenWounds(value as BinaryChoice)}
+              hasError={false}
+              onValueChange={(value) => setHasOpenWounds(value as TernaryChoice)}
             />
           </div>
 
@@ -3059,10 +3029,6 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
               className="w-full rounded-xl border border-[#d8e4f1] bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
             />
           </label>
-
-          {showStep2Validation && !step2Valid && (
-            <p className="text-xs font-medium text-red-600">Please answer all questions before submitting the form.</p>
-          )}
 
           <div className="flex items-center justify-between gap-2">
             <button
