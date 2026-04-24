@@ -2635,6 +2635,7 @@ function QuestionnaireRadioCard({
   name,
   options,
   question,
+  required = false,
   value,
   onValueChange,
 }: {
@@ -2643,12 +2644,15 @@ function QuestionnaireRadioCard({
   name: string;
   options: Array<{ label: string; value: string }>;
   question: ReactNode;
+  required?: boolean;
   value: string;
   onValueChange: (value: string) => void;
 }) {
   return (
     <div className={`rounded-xl border p-3 ${hasError ? 'border-red-400 bg-red-50/30' : 'border-[#d8e4f1] bg-[#f8fbff]'}`}>
-      <p className="text-sm font-medium leading-relaxed text-slate-800">{question}</p>
+      <p className="text-sm font-medium leading-relaxed text-slate-800">
+        {question}{required && <span className="ml-0.5 text-red-500">*</span>}
+      </p>
       {helperText && (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-[#2a6ead]">
           <CircleHelp className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -2793,7 +2797,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
 
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you currently on dialysis?</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you currently on dialysis?<span className="ml-0.5 text-red-500">*</span></p>
               <QuestionnaireInlineChoiceGroup
                 name="dialysis-status"
                 options={[
@@ -2813,7 +2817,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">When did you start dialysis?</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">When did you start dialysis?<span className="ml-0.5 text-red-500">*</span></p>
                     <CircleHelp className="h-3.5 w-3.5 text-[#3380cc]" />
                   </div>
                   <p className="text-xs text-slate-500">(Approximate month and year is fine)</p>
@@ -2851,7 +2855,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
 
             <div className="space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                What is your most recent eGFR (kidney function number)?
+                What is your most recent eGFR (kidney function number)?<span className="ml-0.5 text-red-500">*</span>
               </p>
               <p className="flex items-start gap-1.5 text-xs text-[#2a6ead]">
                 <CircleHelp className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -2891,7 +2895,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
             <div className="h-px bg-[#e3ebf5]" />
 
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your height?</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your height?<span className="ml-0.5 text-red-500">*</span></p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <select value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} disabled={dontKnowHeight} className={fieldClassName(err1.height, dontKnowHeight)}>
@@ -2935,7 +2939,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
             </div>
 
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your weight (in pounds)?</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your weight (in pounds)?<span className="ml-0.5 text-red-500">*</span></p>
               <input
                 type="text"
                 inputMode="decimal"
@@ -2961,7 +2965,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
             <div className="h-px bg-[#e3ebf5]" />
 
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you a U.S. citizen or legal resident?</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Are you a U.S. citizen or legal resident?<span className="ml-0.5 text-red-500">*</span></p>
               <QuestionnaireInlineChoiceGroup
                 name="citizenship-status"
                 options={[
@@ -3012,6 +3016,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: 'No', value: 'no' },
                 { label: "I'm not sure", value: 'notSure' },
               ]}
+              required
               value={needsMultiOrganTransplant}
               hasError={err2.multiOrgan}
               onValueChange={(value) => setNeedsMultiOrganTransplant(value as TernaryChoice)}
@@ -3025,6 +3030,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: 'No', value: 'no' },
                 { label: "I'm not sure", value: 'notSure' },
               ]}
+              required
               value={usesSupplementalOxygen}
               hasError={err2.oxygen}
               onValueChange={(value) => setUsesSupplementalOxygen(value as TernaryChoice)}
@@ -3038,6 +3044,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: 'No', value: 'no' },
                 { label: "I'm not sure", value: 'notSure' },
               ]}
+              required
               value={cardiacSurgeryLast6Months}
               hasError={err2.cardiac}
               onValueChange={(value) => setCardiacSurgeryLast6Months(value as TernaryChoice)}
@@ -3057,6 +3064,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: 'No', value: 'no' },
                 { label: "I'm not sure", value: 'notSure' },
               ]}
+              required
               value={activeCancer}
               hasError={err2.cancer}
               onValueChange={(value) => setActiveCancer(value as TernaryChoice)}
@@ -3071,6 +3079,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: 'No', value: 'no' },
                 { label: 'Prefer not to answer', value: 'preferNotToAnswer' },
               ]}
+              required
               value={activeSubstanceUse}
               hasError={err2.substance}
               onValueChange={(value) => setActiveSubstanceUse(value as SubstanceChoice)}
@@ -3084,6 +3093,7 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 { label: 'No', value: 'no' },
                 { label: "I'm not sure", value: 'notSure' },
               ]}
+              required
               value={hasOpenWounds}
               hasError={err2.wounds}
               onValueChange={(value) => setHasOpenWounds(value as TernaryChoice)}
