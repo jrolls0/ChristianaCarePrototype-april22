@@ -2696,14 +2696,13 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
   const [hasOpenWounds, setHasOpenWounds] = useState<TernaryChoice>('');
   const [otherConcerns, setOtherConcerns] = useState('');
 
-  const [weightBadInput, setWeightBadInput] = useState(false);
-  const [eGFRBadInput, setEGFRBadInput] = useState(false);
-
   const needsDialysisStart = onDialysis === 'yes';
-  const weightError = weightBadInput;
-  const eGFRError = !dontKnowEgfr && eGFRBadInput;
+  const isValidNumber = (v: string) => v.trim() !== '' && !isNaN(Number(v)) && Number(v) > 0;
+  const weightError = weightPounds.trim() !== '' && !isValidNumber(weightPounds);
+  const eGFRError = !dontKnowEgfr && eGFR.trim() !== '' && !isValidNumber(eGFR);
 
   function handleContinue() {
+    if (weightError || eGFRError) return;
     setCurrentStep(2);
   }
 
@@ -2809,12 +2808,10 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
                 <span>This is usually on your lab results. If you don&apos;t know it, that&apos;s okay - we can get it from your clinic.</span>
               </p>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={eGFR}
-                onChange={(event) => {
-                  setEGFR(event.target.value);
-                  setEGFRBadInput(event.target.validity.badInput);
-                }}
+                onChange={(event) => setEGFR(event.target.value)}
                 disabled={dontKnowEgfr}
                 className={fieldClassName(eGFRError, dontKnowEgfr)}
               />
@@ -2877,12 +2874,10 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
             <div className="space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">What is your weight (in pounds)?</p>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={weightPounds}
-                onChange={(event) => {
-                  setWeightPounds(event.target.value);
-                  setWeightBadInput(event.target.validity.badInput);
-                }}
+                onChange={(event) => setWeightPounds(event.target.value)}
                 className={fieldClassName(weightError)}
               />
               {weightError && <p className="text-xs font-medium text-red-600">Please enter a valid weight.</p>}
