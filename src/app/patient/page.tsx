@@ -316,7 +316,7 @@ const INITIAL_ASSISTANT_MESSAGES: AssistantMessage[] = [
     id: 'assistant-1',
     role: 'assistant',
     content:
-      "Hi! I'm Amelia, your Virtual Transplant Assistant. Start with your Home To-Do List and complete pending tasks in order.",
+      "Hi, I'm **Amelia**, your ChristianaCare transplant guide! I'm here to answer your questions and walk you through every step of the kidney transplant process.\n\n**Your first step:** tap **Go to To-Do List** below. You have 4 tasks to complete before your evaluation — things like uploading your insurance card and completing a short health questionnaire. You can do them in any order, at your own pace.",
     timestampLabel: '9:14 AM',
     navigationLabel: 'Go to To-Do List',
   },
@@ -3761,25 +3761,27 @@ function VirtualAssistantAmeliaBubble({
 }) {
   return (
     <div className="flex items-start gap-2">
-      <div
-        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-        style={{ background: 'linear-gradient(135deg, #3399e6, #6b4be8)' }}
-      >
-        <Brain className="h-4.5 w-4.5 text-white" />
-      </div>
       <div className="max-w-[85%]">
-        <div className="rounded-[18px] rounded-bl-[6px] bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-[0_2px_8px_rgba(15,23,42,0.08)]">
-          {message.content}
+        <div className="rounded-[18px] rounded-bl-[6px] bg-white px-4 py-3 text-sm leading-relaxed text-slate-800 shadow-[0_2px_8px_rgba(15,23,42,0.08)]">
+          {message.content.split('\n\n').map((para, i) => (
+            <p key={i} className={i > 0 ? 'mt-2' : ''}>
+              {para.split(/(\*\*[^*]+\*\*)/).map((chunk, j) =>
+                chunk.startsWith('**') && chunk.endsWith('**')
+                  ? <strong key={j} className="font-semibold text-slate-900">{chunk.slice(2, -2)}</strong>
+                  : chunk
+              )}
+            </p>
+          ))}
         </div>
         {message.navigationLabel && (
           <button
             type="button"
             onClick={onGoToTodoList}
-            className="mt-2 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#3399e6] to-[#6b4be8] px-3 py-1.5 text-xs font-semibold text-white"
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#3399e6] to-[#6b4be8] px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:opacity-90 active:scale-95"
           >
-            <ListChecks className="h-3 w-3" />
+            <ListChecks className="h-3.5 w-3.5" />
             {message.navigationLabel}
-            <ChevronRight className="h-3 w-3" />
+            <ChevronRight className="h-3.5 w-3.5" />
           </button>
         )}
         <p className="mt-1 px-1 text-[10px] text-slate-400">{message.timestampLabel}</p>
