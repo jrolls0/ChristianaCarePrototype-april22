@@ -1925,16 +1925,26 @@ function HomeTab({
         : 0,
     [patient]
   );
-  const unreadCareThreads = useMemo(() => {
-    if (!patient) return 0;
-    const keys = new Set<string>();
-    patient.messages.forEach((m) => {
-      if (!m.readByPatient && m.fromRole !== 'patient') keys.add(m.threadKey);
-    });
-    return keys.size;
-  }, [patient]);
 
   const initialTasksComplete = pendingTodos.length === 0;
+
+  let welcomeSubtext: ReactNode;
+  if (pendingTodos.length > 0) {
+    welcomeSubtext = (
+      <>
+        You have <span className="font-semibold text-white">{pendingTodos.length}</span>{' '}
+        {pendingTodos.length === 1 ? 'task' : 'tasks'} to complete. Let&apos;s keep moving.
+      </>
+    );
+  } else if (unreadCareMessages > 0) {
+    welcomeSubtext = (
+      <>You&apos;re caught up on tasks — your care team sent you a message.</>
+    );
+  } else {
+    welcomeSubtext = (
+      <>You&apos;re all caught up. We&apos;ll let you know when something needs you.</>
+    );
+  }
 
   if (educationOpen) {
     return (
@@ -1970,39 +1980,10 @@ function HomeTab({
       <section className="rounded-2xl bg-gradient-to-r from-[#3380cc] to-[#2a6ea9] p-4 shadow-[0_12px_24px_rgba(42,110,169,0.35)]">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Welcome Back</p>
         <h2 className="mt-1 text-2xl font-bold text-white">{displayName}</h2>
-        <p className="mt-2 text-sm leading-relaxed text-blue-100">
-          You have <span className="font-semibold text-white">{pendingTodos.length}</span> pending tasks and{' '}
-          <span className="font-semibold text-white">{unreadCareMessages}</span> unread care-team messages.
-        </p>
+        <p className="mt-2 text-sm leading-relaxed text-blue-100">{welcomeSubtext}</p>
       </section>
 
-      <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
-        <div className="mb-3 flex items-center gap-2">
-          <Mail className="h-4 w-4 text-[#3399e6]" />
-          <h3 className="text-base font-semibold text-slate-900">Messages</h3>
-          <span className="ml-auto rounded-md bg-[#eaf4fc] px-2 py-1 text-[11px] font-medium text-[#2a6ead]">
-            {unreadCareMessages} unread
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <MessageMetricCard
-            icon={Mail}
-            label="Unread"
-            value={`${unreadCareMessages}`}
-            tone="blue"
-            isInteractive
-            onClick={onOpenUnreadMessage}
-            ariaLabel="Open first unread message"
-          />
-          <MessageMetricCard
-            icon={Users}
-            label="Threads"
-            value={`${unreadCareThreads}`}
-            tone="slate"
-          />
-        </div>
-      </section>
+      <MessagesRow unreadCount={unreadCareMessages} onOpenUnread={onOpenUnreadMessage} />
 
       <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
         <div className="mb-3 flex items-center gap-2">
@@ -2127,56 +2108,42 @@ function ComingUpEducationCard({
   );
 }
 
-function MessageMetricCard({
-  ariaLabel,
-  icon: Icon,
-  isInteractive = false,
-  label,
-  onClick,
-  tone,
-  value,
+function MessagesRow({
+  unreadCount,
+  onOpenUnread,
 }: {
-  ariaLabel?: string;
-  icon: ComponentType<{ className?: string }>;
-  isInteractive?: boolean;
-  label: string;
-  onClick?: () => void;
-  tone: 'blue' | 'slate' | 'emerald';
-  value: string;
+  unreadCount: number;
+  onOpenUnread: () => void;
 }) {
-  const toneStyles =
-    tone === 'blue'
-      ? 'bg-[#edf6ff] text-[#215f99]'
-      : tone === 'emerald'
-        ? 'bg-[#edf9f2] text-[#0f6b45]'
-        : 'bg-[#f4f7fb] text-slate-700';
-  const iconColor =
-    tone === 'blue' ? 'text-[#3380cc]' : tone === 'emerald' ? 'text-emerald-600' : 'text-slate-500';
-
-  if (isInteractive && onClick) {
+  if (unreadCount > 0) {
     return (
       <button
         type="button"
-        onClick={onClick}
-        aria-label={ariaLabel ?? label}
-        className={`rounded-xl p-3 text-left transition hover:brightness-[0.98] focus:outline-none focus:ring-2 focus:ring-[#b8dcfb] ${toneStyles}`}
+        onClick={onOpenUnread}
+        aria-label={`Open ${unreadCount} unread care-team message${unreadCount === 1 ? '' : 's'}`}
+        className="flex w-full items-center gap-3 rounded-2xl bg-white p-3.5 text-left shadow-[0_8px_24px_rgba(15,23,42,0.07)] transition hover:bg-[#f8fbff] focus:outline-none focus:ring-2 focus:ring-[#b8dcfb]"
       >
-        <div className={`mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 ${iconColor}`}>
-          <Icon className="h-4 w-4" />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eaf4fc] text-[#1a66cc]">
+          <Mail className="h-5 w-5" />
         </div>
-        <p className="text-lg font-bold leading-none">{value}</p>
-        <p className="mt-1 text-[11px] font-medium">{label}</p>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-slate-900">
+            {unreadCount} unread{' '}
+            {unreadCount === 1 ? 'message' : 'messages'}
+          </p>
+          <p className="text-xs text-slate-500">From your care team</p>
+        </div>
+        <ChevronRight className="h-4 w-4 text-[#1a66cc]" />
       </button>
     );
   }
 
   return (
-    <div className={`rounded-xl p-3 ${toneStyles}`}>
-      <div className={`mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 ${iconColor}`}>
-        <Icon className="h-4 w-4" />
+    <div className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f4f7fb] text-slate-500">
+        <Mail className="h-5 w-5" />
       </div>
-      <p className="text-lg font-bold leading-none">{value}</p>
-      <p className="mt-1 text-[11px] font-medium">{label}</p>
+      <p className="flex-1 text-sm font-medium text-slate-600">No new messages</p>
     </div>
   );
 }
