@@ -669,6 +669,7 @@ export interface InitialState {
   currentPatientId: string | null;
   currentStaffName: string;
   currentClinicUser: ClinicUser;
+  hasCompletedOnboarding: boolean;
 }
 
 export const createInitialState = (): InitialState => ({
@@ -684,6 +685,7 @@ export const createInitialState = (): InitialState => ({
   currentPatientId: null,
   currentStaffName: STAFF_NAME,
   currentClinicUser: INITIAL_CLINIC_USER,
+  hasCompletedOnboarding: false,
 });
 
 export const STAFF_DISPLAY_TITLE = STAFF_TITLE;

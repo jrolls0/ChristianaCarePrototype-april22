@@ -636,7 +636,18 @@ const APP_TABS: Array<{
   { id: 'help', title: 'Help', icon: CircleHelp },
 ];
 
+function useHasHydrated() {
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    const unsub = useStore.persist.onFinishHydration(() => setHydrated(true));
+    if (useStore.persist.hasHydrated()) setHydrated(true);
+    return unsub;
+  }, []);
+  return hydrated;
+}
+
 export default function MobilePrototypePage() {
+  const hasHydrated = useHasHydrated();
   const currentPatientId = useStore((s) => s.currentPatientId);
   const patients = useStore((s) => s.patients);
   const completeTodoAction = useStore((s) => s.completeTodo);
@@ -644,6 +655,8 @@ export default function MobilePrototypePage() {
   const addEmergencyContactTodoAction = useStore((s) => s.addEmergencyContactTodo);
   const ensureInitialTodosAction = useStore((s) => s.ensureInitialTodos);
   const setCurrentPatientAction = useStore((s) => s.setCurrentPatient);
+  const hasCompletedOnboarding = useStore((s) => s.hasCompletedOnboarding);
+  const markOnboardingCompleteAction = useStore((s) => s.markOnboardingComplete);
 
   const currentPatient: StorePatient | null =
     patients.find((p) => p.id === currentPatientId) ??
@@ -665,7 +678,9 @@ export default function MobilePrototypePage() {
   const [rememberedUsername] = useState(() =>
     typeof window === 'undefined' ? '' : (window.localStorage.getItem(SAVED_USERNAME_KEY) ?? '')
   );
-  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>('entry');
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>(() =>
+    useStore.getState().hasCompletedOnboarding ? 'app' : 'entry'
+  );
   const [entryAuthTab, setEntryAuthTab] = useState<EntryAuthTab>('register');
   const [username, setUsername] = useState(rememberedUsername || seededEmail);
   const [password, setPassword] = useState('');
@@ -679,6 +694,20 @@ export default function MobilePrototypePage() {
   const [careTeamIntent, setCareTeamIntent] = useState<CareTeamIntent>(null);
   const [displayName, setDisplayName] = useState(seededDisplayName);
   const [showCoordinatorIntro, setShowCoordinatorIntro] = useState(false);
+
+  // Once persistence finishes hydrating, sync the onboarding step to the
+  // restored flag. We only want this to fire on hydration completion — not
+  // every time `hasCompletedOnboarding` changes — otherwise sign-out (which
+  // intentionally returns to the login screen while keeping the flag) would
+  // immediately bounce back into the app.
+  useEffect(() => {
+    if (!hasHydrated) return;
+    if (useStore.getState().hasCompletedOnboarding) {
+      setOnboardingStep((prev) => (prev === 'entry' ? 'app' : prev));
+      setShowCoordinatorIntro(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasHydrated]);
 
   const todos = useMemo<MockTodo[]>(
     () => (currentPatient ? storeTodosToUiList(currentPatient.todos) : []),
@@ -720,9 +749,14 @@ export default function MobilePrototypePage() {
     }
 
     setDisplayName(registeredDisplayName || deriveDisplayName(username));
-    setOnboardingStep('servicesConsent');
     setActiveTab('home');
-    setShowCoordinatorIntro(true);
+    if (hasCompletedOnboarding) {
+      setOnboardingStep('app');
+      setShowCoordinatorIntro(false);
+    } else {
+      setOnboardingStep('servicesConsent');
+      setShowCoordinatorIntro(true);
+    }
     setPassword('');
     setJustRegistered(false);
   }
@@ -767,13 +801,16 @@ export default function MobilePrototypePage() {
 
   function handleEnterApp() {
     ensureInitialTodosAction(patientId);
+    markOnboardingCompleteAction();
     setOnboardingStep('app');
   }
 
   return (
     <div className="min-h-[100dvh] bg-[#f0f5fb] sm:p-6">
       <div className="mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden bg-[#f4f7fb] sm:h-[880px] sm:rounded-[34px] sm:shadow-[0_28px_60px_rgba(15,23,42,0.24)]">
-        {onboardingStep !== 'app' ? (
+        {!hasHydrated ? (
+          <div className="flex-1" aria-hidden />
+        ) : onboardingStep !== 'app' ? (
           <>
             {onboardingStep === 'entry' && (
               <EntryAuthScreen
@@ -808,6 +845,7 @@ export default function MobilePrototypePage() {
                 onSkip={() => {
                   ensureInitialTodosAction(patientId);
                   addEmergencyContactTodoAction(patientId);
+                  markOnboardingCompleteAction();
                   setOnboardingStep('app');
                 }}
               />

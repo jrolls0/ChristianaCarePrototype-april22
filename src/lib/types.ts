@@ -112,8 +112,10 @@ export interface DemoState {
   currentPatientId: string | null;
   currentStaffName: string;
   currentClinicUser: ClinicUser;
+  hasCompletedOnboarding: boolean;
 
   submitReferral: (data: ReferralSubmission) => string;
+  markOnboardingComplete: () => void;
   completeTodo: (patientId: string, todoId: string) => void;
   addCustomTodo: (patientId: string, title: string, description: string) => void;
   addEmergencyContactTodo: (patientId: string) => void;

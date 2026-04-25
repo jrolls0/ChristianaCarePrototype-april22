@@ -386,21 +386,21 @@ function QuietKpi({
       type="button"
       onClick={onClick}
       className={clsx(
-        'group flex flex-col rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:shadow-md',
+        'group flex flex-col rounded-xl border bg-white p-4 text-left shadow-sm transition hover:shadow-md',
         active
           ? 'border-[#3399e6] ring-2 ring-[#dbeeff]'
           : 'border-slate-200 hover:border-[#3399e6]'
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#eef6ff] text-[#1a66cc]">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
         <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           {label}
         </span>
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eef6ff] text-[#1a66cc]">
-          <Icon className="h-4 w-4" />
-        </span>
       </div>
-      <div className="mt-3 text-4xl font-bold tabular-nums tracking-tight text-slate-900">
+      <div className="mt-3 text-3xl font-bold tabular-nums tracking-tight text-slate-900">
         {value}
       </div>
       <div className="mt-1 text-xs text-slate-500">{caption}</div>
@@ -425,7 +425,7 @@ function StuckKpi({
       type="button"
       onClick={onClick}
       className={clsx(
-        'group flex flex-col rounded-2xl border p-5 text-left shadow-sm transition hover:shadow-md',
+        'group flex flex-col rounded-xl border p-4 text-left shadow-sm transition hover:shadow-md',
         hasStuck
           ? active
             ? 'border-red-400 bg-red-50/80 ring-2 ring-red-100'
@@ -435,7 +435,19 @@ function StuckKpi({
             : 'border-slate-200 bg-white hover:border-emerald-300'
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span
+          className={clsx(
+            'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+            hasStuck ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600'
+          )}
+        >
+          {hasStuck ? (
+            <AlertTriangle className="h-3.5 w-3.5" />
+          ) : (
+            <CheckCircle2 className="h-3.5 w-3.5" />
+          )}
+        </span>
         <span
           className={clsx(
             'text-xs font-semibold uppercase tracking-wider',
@@ -444,22 +456,10 @@ function StuckKpi({
         >
           Stuck &gt; 5 Days
         </span>
-        <span
-          className={clsx(
-            'flex h-9 w-9 items-center justify-center rounded-xl',
-            hasStuck ? 'bg-red-100 text-red-600' : 'bg-emerald-50 text-emerald-600'
-          )}
-        >
-          {hasStuck ? (
-            <AlertTriangle className="h-4 w-4" />
-          ) : (
-            <CheckCircle2 className="h-4 w-4" />
-          )}
-        </span>
       </div>
       <div
         className={clsx(
-          'mt-3 text-4xl font-bold tabular-nums tracking-tight',
+          'mt-3 text-3xl font-bold tabular-nums tracking-tight',
           hasStuck ? 'text-red-700' : 'text-slate-900'
         )}
       >
@@ -483,15 +483,11 @@ function StuckKpi({
             </li>
           ))}
           {patients.length > 3 && (
-            <li className="text-xs text-red-600">
-              +{patients.length - 3} more
-            </li>
+            <li className="text-xs text-red-600">+{patients.length - 3} more</li>
           )}
         </ul>
       ) : (
-        <div className="mt-1 text-xs text-emerald-700">
-          All cases moving on schedule
-        </div>
+        <div className="mt-1 text-xs text-emerald-700">All cases moving on schedule</div>
       )}
     </button>
   );
@@ -503,13 +499,21 @@ function UnreadKpi({ count }: { count: number }) {
     <Link
       href="/staff/messages"
       className={clsx(
-        'group flex flex-col rounded-2xl border p-5 text-left shadow-sm transition hover:shadow-md',
+        'group flex flex-col rounded-xl border p-4 text-left shadow-sm transition hover:shadow-md',
         hasUnread
           ? 'border-[#1a66cc] bg-gradient-to-br from-[#eef6ff] to-white hover:border-[#0f4fa8]'
           : 'border-slate-200 bg-white hover:border-[#3399e6]'
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span
+          className={clsx(
+            'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+            hasUnread ? 'bg-[#1a66cc] text-white' : 'bg-[#eef6ff] text-[#1a66cc]'
+          )}
+        >
+          <Inbox className="h-3.5 w-3.5" />
+        </span>
         <span
           className={clsx(
             'text-xs font-semibold uppercase tracking-wider',
@@ -518,18 +522,10 @@ function UnreadKpi({ count }: { count: number }) {
         >
           Unread Messages
         </span>
-        <span
-          className={clsx(
-            'flex h-9 w-9 items-center justify-center rounded-xl',
-            hasUnread ? 'bg-[#1a66cc] text-white' : 'bg-[#eef6ff] text-[#1a66cc]'
-          )}
-        >
-          <Inbox className="h-4 w-4" />
-        </span>
       </div>
       <div
         className={clsx(
-          'mt-3 text-4xl font-bold tabular-nums tracking-tight',
+          'mt-3 text-3xl font-bold tabular-nums tracking-tight',
           hasUnread ? 'text-[#1a66cc]' : 'text-slate-900'
         )}
       >

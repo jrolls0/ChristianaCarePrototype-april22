@@ -381,6 +381,10 @@ export const useStore = create<DemoState>()(
         set({ currentPatientId: patientId });
       },
 
+      markOnboardingComplete: () => {
+        set({ hasCompletedOnboarding: true });
+      },
+
       advancePatientStage: (patientId) => {
         const STAGE_ORDER: Patient['stage'][] = [
           'new-referral',
@@ -423,6 +427,7 @@ export const useStore = create<DemoState>()(
         currentPatientId: state.currentPatientId,
         currentStaffName: state.currentStaffName,
         currentClinicUser: state.currentClinicUser,
+        hasCompletedOnboarding: state.hasCompletedOnboarding,
       }),
     }
   )
