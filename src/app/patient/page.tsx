@@ -630,7 +630,7 @@ const APP_TABS: Array<{
   icon: ComponentType<{ className?: string }>;
 }> = [
   { id: 'home', title: 'Home', icon: House },
-  { id: 'amelia', title: 'Amelia', icon: Brain },
+  { id: 'amelia', title: 'Assistant', icon: Brain },
   { id: 'messages', title: 'Messages', icon: Mail },
   { id: 'profile', title: 'Profile', icon: UserRound },
   { id: 'help', title: 'Help', icon: CircleHelp },
@@ -716,7 +716,7 @@ export default function MobilePrototypePage() {
 
   const topBarTitleByTab: Record<AppTab, string> = {
     home: 'Home',
-    amelia: 'Amelia',
+    amelia: 'Assistant',
     messages: 'Messages',
     profile: 'Profile',
     help: 'Help',
