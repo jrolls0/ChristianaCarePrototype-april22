@@ -51,8 +51,8 @@ import type { Patient as StorePatient, Todo as StoreTodo } from '../../lib/types
 
 type OnboardingStep = 'entry' | 'servicesConsent' | 'medicalRecordsConsent' | 'carePartnerPrompt' | 'app';
 type EntryAuthTab = 'register' | 'login';
-type AppTab = 'home' | 'careTeam' | 'profile' | 'help';
-type CareTeamIntent = 'openFirstUnread' | null;
+type AppTab = 'home' | 'amelia' | 'messages' | 'profile' | 'help';
+type MessagesIntent = 'openFirstUnread' | null;
 type TodoStatus = 'pending' | 'completed';
 
 type MockTodo = {
@@ -75,7 +75,6 @@ type BinaryChoice = '' | 'yes' | 'no';
 type TernaryChoice = '' | 'yes' | 'no' | 'notSure';
 type SubstanceChoice = '' | 'yes' | 'no' | 'preferNotToAnswer';
 
-type CareTeamSegment = 'virtualAssistant' | 'messageCenter';
 type AssistantRole = 'assistant' | 'user' | 'system';
 type StaffRole = 'patient' | 'dusw' | 'tc_employee';
 
@@ -631,7 +630,8 @@ const APP_TABS: Array<{
   icon: ComponentType<{ className?: string }>;
 }> = [
   { id: 'home', title: 'Home', icon: House },
-  { id: 'careTeam', title: 'Care Team', icon: Users },
+  { id: 'amelia', title: 'Amelia', icon: Brain },
+  { id: 'messages', title: 'Messages', icon: Mail },
   { id: 'profile', title: 'Profile', icon: UserRound },
   { id: 'help', title: 'Help', icon: CircleHelp },
 ];
@@ -691,7 +691,7 @@ export default function MobilePrototypePage() {
   const [justRegistered, setJustRegistered] = useState(false);
 
   const [activeTab, setActiveTab] = useState<AppTab>('home');
-  const [careTeamIntent, setCareTeamIntent] = useState<CareTeamIntent>(null);
+  const [messagesIntent, setMessagesIntent] = useState<MessagesIntent>(null);
   const [displayName, setDisplayName] = useState(seededDisplayName);
   const [showCoordinatorIntro, setShowCoordinatorIntro] = useState(false);
 
@@ -716,7 +716,8 @@ export default function MobilePrototypePage() {
 
   const topBarTitleByTab: Record<AppTab, string> = {
     home: 'Home',
-    careTeam: 'Care Team',
+    amelia: 'Amelia',
+    messages: 'Messages',
     profile: 'Profile',
     help: 'Help',
   };
@@ -778,7 +779,7 @@ export default function MobilePrototypePage() {
     setUsername(registeredEmail);
     setPassword('');
     setActiveTab('home');
-    setCareTeamIntent(null);
+    setMessagesIntent(null);
     setShowCoordinatorIntro(false);
   }
 
@@ -795,8 +796,8 @@ export default function MobilePrototypePage() {
   }
 
   function handleOpenUnreadMessage() {
-    setActiveTab('careTeam');
-    setCareTeamIntent('openFirstUnread');
+    setActiveTab('messages');
+    setMessagesIntent('openFirstUnread');
   }
 
   function handleEnterApp() {
@@ -887,22 +888,25 @@ export default function MobilePrototypePage() {
                   patient={currentPatient}
                 />
               )}
-              {activeTab === 'careTeam' && (
-                <CareTeamTab
-                  intent={careTeamIntent}
-                  patient={currentPatient}
+              {activeTab === 'amelia' && (
+                <VirtualAssistantTab
                   onGoToTodoList={() => {
                     setActiveTab('home');
-                    setCareTeamIntent(null);
                   }}
+                />
+              )}
+              {activeTab === 'messages' && (
+                <MessagesTab
+                  intent={messagesIntent}
+                  patient={currentPatient}
                 />
               )}
               {activeTab === 'profile' && <ProfileTab displayName={displayName} username={username} />}
               {activeTab === 'help' && <HelpTab />}
             </div>
 
-            <nav className="absolute bottom-0 left-0 right-0 border-t border-[#dce7f2] bg-white px-2 py-2">
-              <ul className="grid grid-cols-4 gap-1">
+            <nav className="absolute bottom-0 left-0 right-0 border-t border-[#dce7f2] bg-white px-1.5 py-2">
+              <ul className="grid grid-cols-5 gap-0.5">
                 {APP_TABS.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = tab.id === activeTab;
@@ -913,9 +917,9 @@ export default function MobilePrototypePage() {
                         type="button"
                         onClick={() => {
                           setActiveTab(tab.id);
-                          if (tab.id !== 'careTeam') setCareTeamIntent(null);
+                          if (tab.id !== 'messages') setMessagesIntent(null);
                         }}
-                        className={`flex w-full flex-col items-center gap-1 rounded-xl py-2 ${
+                        className={`flex w-full flex-col items-center gap-1 rounded-xl px-1 py-2 ${
                           isActive ? 'bg-[#eaf4fc] text-[#1a66cc]' : 'text-slate-500'
                         }`}
                       >
@@ -933,7 +937,7 @@ export default function MobilePrototypePage() {
                 displayName={displayName}
                 onContinue={() => {
                   setShowCoordinatorIntro(false);
-                  setActiveTab('careTeam');
+                  setActiveTab('amelia');
                 }}
               />
             )}
@@ -3231,87 +3235,14 @@ function ameliaReplyFor(input: string): string {
   return AMELIA_FALLBACK;
 }
 
-function CareTeamTab({
-  intent,
+function VirtualAssistantTab({
   onGoToTodoList,
-  patient,
 }: {
-  intent?: CareTeamIntent;
   onGoToTodoList?: () => void;
-  patient: StorePatient | null;
 }) {
-  const sendMessageAction = useStore((s) => s.sendMessage);
-  const markThreadReadAction = useStore((s) => s.markThreadRead);
-  const markMessagesReadAction = useStore((s) => s.markMessagesRead);
-
-  const threads = useMemo(() => deriveThreadsFromPatient(patient), [patient]);
-
-  const initialUnreadThreadId = useMemo(() => {
-    if (intent !== 'openFirstUnread') return null;
-    return threads.find((t) => t.unreadCount > 0)?.id ?? null;
-  }, [intent, threads]);
-
-  const didApplyIntent = useRef(false);
-  useEffect(() => {
-    if (intent !== 'openFirstUnread' || didApplyIntent.current) return;
-    if (!patient) return;
-    const firstUnread = threads.find((t) => t.unreadCount > 0);
-    if (firstUnread) {
-      const key = threadIdToKey(firstUnread.id);
-      if (key) markThreadReadAction(patient.id, key, 'patient');
-    }
-    didApplyIntent.current = true;
-  }, [intent, threads, patient, markThreadReadAction]);
-
-  const [selectedSegment, setSelectedSegment] = useState<CareTeamSegment>(
-    intent === 'openFirstUnread' ? 'messageCenter' : 'virtualAssistant'
-  );
   const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>(INITIAL_ASSISTANT_MESSAGES);
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantTyping, setAssistantTyping] = useState(false);
-
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(initialUnreadThreadId);
-  const [threadReply, setThreadReply] = useState('');
-  const [threadSearch, setThreadSearch] = useState('');
-  const [threadFilter, setThreadFilter] = useState<'all' | 'unread'>('all');
-
-  const [showComposer, setShowComposer] = useState(false);
-  const [composeRecipientIdState, setComposeRecipientId] = useState(
-    () => threads[0]?.id ?? ''
-  );
-  const composeRecipientId =
-    composeRecipientIdState && threads.some((t) => t.id === composeRecipientIdState)
-      ? composeRecipientIdState
-      : (threads[0]?.id ?? '');
-  const [composeSubject, setComposeSubject] = useState('');
-  const [composeBody, setComposeBody] = useState('');
-  const [composeAttachments, setComposeAttachments] = useState<ComposeAttachment[]>([]);
-
-  const unreadCount = useMemo(
-    () => threads.reduce((total, thread) => total + thread.unreadCount, 0),
-    [threads]
-  );
-  const selectedThread = useMemo(
-    () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
-    [threads, selectedThreadId]
-  );
-  const filteredThreads = useMemo(() => {
-    const query = threadSearch.trim().toLowerCase();
-    return threads.filter((thread) => {
-      if (threadFilter === 'unread' && thread.unreadCount === 0) return false;
-      if (!query) return true;
-      const haystack = [
-        thread.participantName,
-        thread.subject,
-        thread.previewText,
-        thread.participantOrganization,
-      ]
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [threadFilter, threadSearch, threads]);
-  const hasUnreadThreads = useMemo(() => threads.some((thread) => thread.unreadCount > 0), [threads]);
 
   function sendAssistantMessage(overrideInput?: string) {
     const message = (overrideInput ?? assistantInput).trim();
@@ -3342,6 +3273,146 @@ function CareTeamTab({
       setAssistantTyping(false);
     }, 800);
   }
+
+  return (
+    <div className="space-y-3">
+      <section className="overflow-hidden rounded-2xl border border-[#dfe6f1] bg-[#f2f2f7] shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+          <div className="space-y-4 px-3 py-4">
+            {assistantMessages.map((message) =>
+              message.role === 'user' ? (
+                <VirtualAssistantUserBubble key={message.id} message={message} />
+              ) : (
+                <VirtualAssistantAmeliaBubble key={message.id} message={message} onGoToTodoList={onGoToTodoList} />
+              )
+            )}
+
+            {assistantTyping && <VirtualAssistantTypingBubble />}
+
+            <div className="pt-1">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Common Questions
+              </p>
+              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                {QUICK_HELP_CHIPS.map((chip) => {
+                  const Icon = chip.icon;
+                  return (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => sendAssistantMessage(chip.title)}
+                      disabled={assistantTyping}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.08)] disabled:opacity-60"
+                    >
+                      <Icon className="h-3.5 w-3.5 text-[#3399e6]" />
+                      {chip.title}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-[#d9e1ec] bg-[#f2f2f7] p-3">
+            <div className="flex items-center gap-2">
+              <input
+                value={assistantInput}
+                onChange={(event) => setAssistantInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendAssistantMessage();
+                  }
+                }}
+                placeholder="Ask Amelia anything..."
+                className="h-11 flex-1 rounded-full border border-[#d9e1ec] bg-white px-4 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+              />
+              <button
+                type="button"
+                onClick={() => sendAssistantMessage()}
+                disabled={assistantInput.trim().length === 0 || assistantTyping}
+                className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${
+                  assistantInput.trim().length > 0 && !assistantTyping
+                    ? 'bg-gradient-to-br from-[#3399e6] to-[#5469e8]'
+                    : 'bg-slate-300'
+                }`}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+    </div>
+  );
+}
+
+function MessagesTab({
+  intent,
+  patient,
+}: {
+  intent?: MessagesIntent;
+  patient: StorePatient | null;
+}) {
+  const sendMessageAction = useStore((s) => s.sendMessage);
+  const markThreadReadAction = useStore((s) => s.markThreadRead);
+  const markMessagesReadAction = useStore((s) => s.markMessagesRead);
+
+  const threads = useMemo(() => deriveThreadsFromPatient(patient), [patient]);
+
+  const initialUnreadThreadId = useMemo(() => {
+    if (intent !== 'openFirstUnread') return null;
+    return threads.find((t) => t.unreadCount > 0)?.id ?? null;
+  }, [intent, threads]);
+
+  const didApplyIntent = useRef(false);
+  useEffect(() => {
+    if (intent !== 'openFirstUnread' || didApplyIntent.current) return;
+    if (!patient) return;
+    const firstUnread = threads.find((t) => t.unreadCount > 0);
+    if (firstUnread) {
+      const key = threadIdToKey(firstUnread.id);
+      if (key) markThreadReadAction(patient.id, key, 'patient');
+    }
+    didApplyIntent.current = true;
+  }, [intent, threads, patient, markThreadReadAction]);
+
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(initialUnreadThreadId);
+  const [threadReply, setThreadReply] = useState('');
+  const [threadSearch, setThreadSearch] = useState('');
+  const [threadFilter, setThreadFilter] = useState<'all' | 'unread'>('all');
+
+  const [showComposer, setShowComposer] = useState(false);
+  const [composeRecipientIdState, setComposeRecipientId] = useState(
+    () => threads[0]?.id ?? ''
+  );
+  const composeRecipientId =
+    composeRecipientIdState && threads.some((t) => t.id === composeRecipientIdState)
+      ? composeRecipientIdState
+      : (threads[0]?.id ?? '');
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+  const [composeAttachments, setComposeAttachments] = useState<ComposeAttachment[]>([]);
+
+  const selectedThread = useMemo(
+    () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
+    [threads, selectedThreadId]
+  );
+  const filteredThreads = useMemo(() => {
+    const query = threadSearch.trim().toLowerCase();
+    return threads.filter((thread) => {
+      if (threadFilter === 'unread' && thread.unreadCount === 0) return false;
+      if (!query) return true;
+      const haystack = [
+        thread.participantName,
+        thread.subject,
+        thread.previewText,
+        thread.participantOrganization,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [threadFilter, threadSearch, threads]);
+  const hasUnreadThreads = useMemo(() => threads.some((thread) => thread.unreadCount > 0), [threads]);
 
   function openThread(threadId: string) {
     if (patient) {
@@ -3424,101 +3495,7 @@ function CareTeamTab({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
-        <div className="grid grid-cols-2 rounded-xl bg-[#eef2f7] p-1">
-          <button
-            type="button"
-            onClick={() => setSelectedSegment('virtualAssistant')}
-            className={`rounded-[10px] px-2 py-2 text-xs font-semibold transition ${
-              selectedSegment === 'virtualAssistant'
-                ? 'bg-white text-[#1a66cc] shadow-[0_2px_8px_rgba(15,23,42,0.08)]'
-                : 'text-slate-500'
-            }`}
-          >
-            Virtual Assistant
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedSegment('messageCenter')}
-            className={`rounded-[10px] px-2 py-2 text-xs font-semibold transition ${
-              selectedSegment === 'messageCenter'
-                ? 'bg-white text-[#1a66cc] shadow-[0_2px_8px_rgba(15,23,42,0.08)]'
-                : 'text-slate-500'
-            }`}
-          >
-            {unreadCount > 0 ? `Message Center (${unreadCount})` : 'Message Center'}
-          </button>
-        </div>
-      </div>
-
-      {selectedSegment === 'virtualAssistant' ? (
-        <section className="overflow-hidden rounded-2xl border border-[#dfe6f1] bg-[#f2f2f7] shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
-          <div className="space-y-4 px-3 py-4">
-            {assistantMessages.map((message) =>
-              message.role === 'user' ? (
-                <VirtualAssistantUserBubble key={message.id} message={message} />
-              ) : (
-                <VirtualAssistantAmeliaBubble key={message.id} message={message} onGoToTodoList={onGoToTodoList} />
-              )
-            )}
-
-            {assistantTyping && <VirtualAssistantTypingBubble />}
-
-            <div className="pt-1">
-              <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                Common Questions
-              </p>
-              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                {QUICK_HELP_CHIPS.map((chip) => {
-                  const Icon = chip.icon;
-                  return (
-                    <button
-                      key={chip.id}
-                      type="button"
-                      onClick={() => sendAssistantMessage(chip.title)}
-                      disabled={assistantTyping}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.08)] disabled:opacity-60"
-                    >
-                      <Icon className="h-3.5 w-3.5 text-[#3399e6]" />
-                      {chip.title}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-[#d9e1ec] bg-[#f2f2f7] p-3">
-            <div className="flex items-center gap-2">
-              <input
-                value={assistantInput}
-                onChange={(event) => setAssistantInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    sendAssistantMessage();
-                  }
-                }}
-                placeholder="Ask Amelia anything..."
-                className="h-11 flex-1 rounded-full border border-[#d9e1ec] bg-white px-4 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
-              />
-              <button
-                type="button"
-                onClick={() => sendAssistantMessage()}
-                disabled={assistantInput.trim().length === 0 || assistantTyping}
-                className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${
-                  assistantInput.trim().length > 0 && !assistantTyping
-                    ? 'bg-gradient-to-br from-[#3399e6] to-[#5469e8]'
-                    : 'bg-slate-300'
-                }`}
-              >
-                <ArrowUp className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : (
-        <section className="relative overflow-hidden rounded-2xl border border-[#e0e7f2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+      <section className="relative overflow-hidden rounded-2xl border border-[#e0e7f2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
           {selectedThread ? (
             <div className="flex min-h-[560px] flex-col">
               <div className="flex items-center gap-3 border-b border-[#e3eaf4] px-4 py-3">
@@ -3805,8 +3782,7 @@ function CareTeamTab({
               </div>
             </div>
           )}
-        </section>
-      )}
+      </section>
     </div>
   );
 }
