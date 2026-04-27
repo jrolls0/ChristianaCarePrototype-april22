@@ -123,6 +123,7 @@ export interface DemoState {
   completeTodo: (patientId: string, todoId: string) => void;
   addCustomTodo: (patientId: string, title: string, description: string) => void;
   addEmergencyContactTodo: (patientId: string) => void;
+  addEducationTodo: (patientId: string) => void;
   ensureInitialTodos: (patientId: string) => void;
   sendMessage: (
     patientId: string,

@@ -258,6 +258,25 @@ export const useStore = create<DemoState>()(
         });
       },
 
+      addEducationTodo: (patientId) => {
+        const now = new Date().toISOString();
+        set({
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId) return p;
+            if (p.todos.some((t) => t.type === 'watch-education-video')) return p;
+            const todo: Todo = {
+              id: `todo-${patientId}-education`,
+              type: 'watch-education-video',
+              title: 'Watch Transplant Education Video',
+              description: 'A 6-minute orientation on evaluation, surgery, and recovery.',
+              status: 'pending',
+              addedAt: now,
+            };
+            return { ...p, todos: [...p.todos, todo], lastActivityAt: now };
+          }),
+        });
+      },
+
       addEmergencyContactTodo: (patientId) => {
         const now = new Date().toISOString();
         set({

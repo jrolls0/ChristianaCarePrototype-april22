@@ -31,7 +31,6 @@ import {
   Eye,
   EyeOff,
   FileText,
-  GraduationCap,
   Heart,
   HeartPulse,
   House,
@@ -73,6 +72,7 @@ type MockTodo = {
     | 'insuranceCardUpload'
     | 'healthQuestionnaire'
     | 'carePartnerInvite'
+    | 'educationVideo'
     | 'customStaffTodo';
   addedByStaff?: string;
 };
@@ -193,6 +193,7 @@ const HOME_VISIBLE_STORE_TYPES: ReadonlySet<StoreTodo['type']> = new Set([
   'upload-insurance-card',
   'complete-health-questionnaire',
   'add-emergency-contact',
+  'watch-education-video',
   'custom',
 ]);
 
@@ -206,7 +207,9 @@ function mapStoreTodoToUi(todo: StoreTodo): MockTodo {
           ? 'healthQuestionnaire'
           : todo.type === 'add-emergency-contact'
             ? 'carePartnerInvite'
-            : 'customStaffTodo';
+            : todo.type === 'watch-education-video'
+              ? 'educationVideo'
+              : 'customStaffTodo';
   const priority: MockTodo['priority'] =
     todo.type === 'upload-government-id'
       ? 'high'
@@ -214,9 +217,11 @@ function mapStoreTodoToUi(todo: StoreTodo): MockTodo {
         ? 'medium'
         : todo.type === 'add-emergency-contact'
           ? 'low'
-          : todo.type === 'custom'
-            ? 'medium'
-            : 'low';
+          : todo.type === 'watch-education-video'
+            ? 'low'
+            : todo.type === 'custom'
+              ? 'medium'
+              : 'low';
   return {
     id: todo.id,
     title: todo.title,
@@ -656,6 +661,7 @@ export default function MobilePrototypePage() {
   const completeTodoAction = useStore((s) => s.completeTodo);
   const uploadDocumentAction = useStore((s) => s.uploadDocument);
   const addEmergencyContactTodoAction = useStore((s) => s.addEmergencyContactTodo);
+  const addEducationTodoAction = useStore((s) => s.addEducationTodo);
   const ensureInitialTodosAction = useStore((s) => s.ensureInitialTodos);
   const setCurrentPatientAction = useStore((s) => s.setCurrentPatient);
   const hasCompletedOnboarding = useStore((s) => s.hasCompletedOnboarding);
@@ -743,6 +749,25 @@ export default function MobilePrototypePage() {
   const canSubmitLogin = username.trim().length > 0 && password.trim().length > 0;
   const pendingTodos = useMemo(() => todos.filter((todo) => todo.status === 'pending'), [todos]);
   const completedTodos = useMemo(() => todos.filter((todo) => todo.status === 'completed'), [todos]);
+
+  // Once the patient finishes the initial todos (uploads, questionnaire,
+  // emergency contact, etc.), drop the Education video into their list as a
+  // normal pending todo. We only fire this when they've actually done some
+  // work — i.e. there is at least one completed todo and zero pending todos —
+  // and only if education hasn't already been added.
+  useEffect(() => {
+    if (!hasHydrated) return;
+    if (onboardingStep !== 'app') return;
+    if (!currentPatient) return;
+    const hasEducation = currentPatient.todos.some((t) => t.type === 'watch-education-video');
+    if (hasEducation) return;
+    const nonEducationTodos = currentPatient.todos.filter((t) => t.type !== 'watch-education-video');
+    if (nonEducationTodos.length === 0) return;
+    const allDone = nonEducationTodos.every((t) => t.status === 'completed');
+    if (allDone) {
+      addEducationTodoAction(currentPatient.id);
+    }
+  }, [hasHydrated, onboardingStep, currentPatient, addEducationTodoAction]);
 
   function deriveDisplayName(value: string) {
     const trimmed = value.trim();
@@ -902,7 +927,13 @@ export default function MobilePrototypePage() {
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5">
+            <div
+              className={
+                activeTab === 'amelia'
+                  ? 'flex min-h-0 flex-1 flex-col'
+                  : 'min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5'
+              }
+            >
               {activeTab === 'home' && (
                 <HomeTab
                   completedTodos={completedTodos}
@@ -1943,8 +1974,6 @@ function HomeTab({
   patient,
 }: HomeTabProps) {
   const [activeTodoId, setActiveTodoId] = useState<string | null>(null);
-  const [educationOpen, setEducationOpen] = useState(false);
-  const [educationCompleted, setEducationCompleted] = useState(false);
   const activeTodo = pendingTodos.find((todo) => todo.id === activeTodoId) ?? null;
 
   const unreadCareMessages = useMemo(
@@ -1954,8 +1983,6 @@ function HomeTab({
         : 0,
     [patient]
   );
-
-  const initialTasksComplete = pendingTodos.length === 0;
 
   let welcomeSubtext: ReactNode;
   if (pendingTodos.length > 0) {
@@ -1972,20 +1999,6 @@ function HomeTab({
   } else {
     welcomeSubtext = (
       <>You&apos;re all caught up. We&apos;ll let you know when something needs you.</>
-    );
-  }
-
-  if (educationOpen) {
-    return (
-      <div className="space-y-4">
-        <EducationTaskCard
-          onClose={() => setEducationOpen(false)}
-          onComplete={() => {
-            setEducationCompleted(true);
-            setEducationOpen(false);
-          }}
-        />
-      </div>
     );
   }
 
@@ -2048,92 +2061,7 @@ function HomeTab({
         </div>
       </section>
 
-      <ComingUpEducationCard
-        unlocked={initialTasksComplete}
-        completed={educationCompleted}
-        onOpen={() => setEducationOpen(true)}
-      />
     </div>
-  );
-}
-
-function ComingUpEducationCard({
-  unlocked,
-  completed,
-  onOpen,
-}: {
-  unlocked: boolean;
-  completed: boolean;
-  onOpen: () => void;
-}) {
-  const statusLabel = completed
-    ? 'Completed'
-    : unlocked
-      ? 'Ready to start'
-      : 'Available after initial tasks complete';
-
-  const statusTone = completed
-    ? 'bg-[#eef8f2] text-emerald-700'
-    : unlocked
-      ? 'bg-[#eaf4fc] text-[#1a66cc]'
-      : 'bg-[#f4f7fb] text-slate-500';
-
-  const interactive = unlocked && !completed;
-
-  const rowClass = `flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-    interactive
-      ? 'border-[#b9dbf7] bg-[#f8fbff] hover:bg-[#eef6ff]'
-      : completed
-        ? 'border-[#cfead8] bg-[#f4fbf6]'
-        : 'border-[#e1e7ef] bg-[#f8fafc]'
-  }`;
-
-  const rowInner = (
-    <>
-      <div
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-          completed
-            ? 'bg-emerald-100 text-emerald-700'
-            : unlocked
-              ? 'bg-[#dcebfa] text-[#1a66cc]'
-              : 'bg-slate-100 text-slate-400'
-        }`}
-      >
-        {completed ? <CheckCircle2 className="h-5 w-5" /> : unlocked ? <PlayCircle className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
-      </div>
-      <div className="flex-1">
-        <p
-          className={`text-sm font-semibold ${
-            unlocked || completed ? 'text-slate-900' : 'text-slate-500'
-          }`}
-        >
-          Transplant Education: What to Expect
-        </p>
-        <p className="text-xs text-slate-500">
-          A 6-minute video walking through evaluation, surgery, and recovery.
-        </p>
-      </div>
-      {interactive && <ChevronRight className="h-4 w-4 text-[#1a66cc]" />}
-    </>
-  );
-
-  return (
-    <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
-      <div className="mb-3 flex items-center gap-2">
-        <GraduationCap className="h-4 w-4 text-[#3399e6]" />
-        <h3 className="text-base font-semibold text-slate-900">Coming Up</h3>
-        <span className={`ml-auto rounded-md px-2 py-1 text-[11px] font-medium ${statusTone}`}>
-          {statusLabel}
-        </span>
-      </div>
-      {interactive ? (
-        <button type="button" onClick={onOpen} className={rowClass}>
-          {rowInner}
-        </button>
-      ) : (
-        <div className={rowClass}>{rowInner}</div>
-      )}
-    </section>
   );
 }
 
@@ -2243,6 +2171,9 @@ function TodoTaskWorkspace({
   }
   if (todo.type === 'carePartnerInvite') {
     return <CarePartnerInviteTaskCard onClose={onClose} onComplete={onComplete} />;
+  }
+  if (todo.type === 'educationVideo') {
+    return <EducationTaskCard onClose={onClose} onComplete={onComplete} />;
   }
   if (todo.type === 'customStaffTodo') {
     return <CustomStaffTaskCard onClose={onClose} onComplete={onComplete} todo={todo} />;
@@ -3268,10 +3199,34 @@ function VirtualAssistantTab({
   const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>(INITIAL_ASSISTANT_MESSAGES);
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantTyping, setAssistantTyping] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
+
+  // Track whether the user is currently pinned to the bottom of the scroll
+  // area. If they've scrolled up to read older messages, we don't yank them
+  // back when a new message arrives.
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 40;
+  }
+
+  // Auto-scroll to bottom when new messages or the typing indicator appear,
+  // unless the user has scrolled up to read history.
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [assistantMessages.length, assistantTyping]);
 
   function sendAssistantMessage(overrideInput?: string) {
     const message = (overrideInput ?? assistantInput).trim();
     if (!message || assistantTyping) return;
+
+    // Sending a new message always pulls the user back to the latest exchange.
+    stickToBottomRef.current = true;
 
     setAssistantInput('');
     setAssistantMessages((previous) => [
@@ -3300,72 +3255,69 @@ function VirtualAssistantTab({
   }
 
   return (
-    <div className="space-y-3">
-      <section className="overflow-hidden rounded-2xl border border-[#dfe6f1] bg-[#f2f2f7] shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
-          <div className="space-y-4 px-3 py-4">
-            {assistantMessages.map((message) =>
-              message.role === 'user' ? (
-                <VirtualAssistantUserBubble key={message.id} message={message} />
-              ) : (
-                <VirtualAssistantAmeliaBubble key={message.id} message={message} onGoToTodoList={onGoToTodoList} />
-              )
-            )}
+    <div className="flex h-full min-h-0 flex-col bg-[#f2f2f7]">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4"
+      >
+        {assistantMessages.map((message) =>
+          message.role === 'user' ? (
+            <VirtualAssistantUserBubble key={message.id} message={message} />
+          ) : (
+            <VirtualAssistantAmeliaBubble key={message.id} message={message} onGoToTodoList={onGoToTodoList} />
+          )
+        )}
 
-            {assistantTyping && <VirtualAssistantTypingBubble />}
+        {assistantTyping && <VirtualAssistantTypingBubble />}
+      </div>
 
-            <div className="pt-1">
-              <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                Common Questions
-              </p>
-              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                {QUICK_HELP_CHIPS.map((chip) => {
-                  const Icon = chip.icon;
-                  return (
-                    <button
-                      key={chip.id}
-                      type="button"
-                      onClick={() => sendAssistantMessage(chip.title)}
-                      disabled={assistantTyping}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.08)] disabled:opacity-60"
-                    >
-                      <Icon className="h-3.5 w-3.5 text-[#3399e6]" />
-                      {chip.title}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-[#d9e1ec] bg-[#f2f2f7] p-3">
-            <div className="flex items-center gap-2">
-              <input
-                value={assistantInput}
-                onChange={(event) => setAssistantInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    sendAssistantMessage();
-                  }
-                }}
-                placeholder="Ask Amelia anything..."
-                className="h-11 flex-1 rounded-full border border-[#d9e1ec] bg-white px-4 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
-              />
+      {/* mb-[68px] keeps the bottom dock above the absolutely-positioned nav */}
+      <div className="mb-[68px] border-t border-[#d9e1ec] bg-[#f2f2f7] px-3 pb-3 pt-2">
+        <div className="-mx-3 mb-2 flex gap-2 overflow-x-auto px-3 pb-1">
+          {QUICK_HELP_CHIPS.map((chip) => {
+            const Icon = chip.icon;
+            return (
               <button
+                key={chip.id}
                 type="button"
-                onClick={() => sendAssistantMessage()}
-                disabled={assistantInput.trim().length === 0 || assistantTyping}
-                className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${
-                  assistantInput.trim().length > 0 && !assistantTyping
-                    ? 'bg-gradient-to-br from-[#3399e6] to-[#5469e8]'
-                    : 'bg-slate-300'
-                }`}
+                onClick={() => sendAssistantMessage(chip.title)}
+                disabled={assistantTyping}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.08)] disabled:opacity-60"
               >
-                <ArrowUp className="h-4 w-4" />
+                <Icon className="h-3.5 w-3.5 text-[#3399e6]" />
+                {chip.title}
               </button>
-            </div>
-          </div>
-        </section>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={assistantInput}
+            onChange={(event) => setAssistantInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendAssistantMessage();
+              }
+            }}
+            placeholder="Ask Amelia anything..."
+            className="h-11 flex-1 rounded-full border border-[#d9e1ec] bg-white px-4 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+          />
+          <button
+            type="button"
+            onClick={() => sendAssistantMessage()}
+            disabled={assistantInput.trim().length === 0 || assistantTyping}
+            className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${
+              assistantInput.trim().length > 0 && !assistantTyping
+                ? 'bg-gradient-to-br from-[#3399e6] to-[#5469e8]'
+                : 'bg-slate-300'
+            }`}
+          >
+            <ArrowUp className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
