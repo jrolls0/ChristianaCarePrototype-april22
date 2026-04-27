@@ -107,15 +107,19 @@ export interface ClinicUser {
   clinicName: string;
 }
 
+export type PatientTab = 'home' | 'amelia' | 'messages' | 'profile' | 'help';
+
 export interface DemoState {
   patients: Patient[];
   currentPatientId: string | null;
   currentStaffName: string;
   currentClinicUser: ClinicUser;
   hasCompletedOnboarding: boolean;
+  lastPatientTab: PatientTab;
 
   submitReferral: (data: ReferralSubmission) => string;
   markOnboardingComplete: () => void;
+  setLastPatientTab: (tab: PatientTab) => void;
   completeTodo: (patientId: string, todoId: string) => void;
   addCustomTodo: (patientId: string, title: string, description: string) => void;
   addEmergencyContactTodo: (patientId: string) => void;

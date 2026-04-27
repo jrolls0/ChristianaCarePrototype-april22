@@ -385,6 +385,10 @@ export const useStore = create<DemoState>()(
         set({ hasCompletedOnboarding: true });
       },
 
+      setLastPatientTab: (tab) => {
+        set({ lastPatientTab: tab });
+      },
+
       advancePatientStage: (patientId) => {
         const STAGE_ORDER: Patient['stage'][] = [
           'new-referral',
@@ -428,6 +432,7 @@ export const useStore = create<DemoState>()(
         currentStaffName: state.currentStaffName,
         currentClinicUser: state.currentClinicUser,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
+        lastPatientTab: state.lastPatientTab,
       }),
     }
   )

@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import {
   useEffect,
   useMemo,
@@ -21,6 +22,7 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Circle,
   CircleHelp,
@@ -658,6 +660,7 @@ export default function MobilePrototypePage() {
   const setCurrentPatientAction = useStore((s) => s.setCurrentPatient);
   const hasCompletedOnboarding = useStore((s) => s.hasCompletedOnboarding);
   const markOnboardingCompleteAction = useStore((s) => s.markOnboardingComplete);
+  const setLastPatientTabAction = useStore((s) => s.setLastPatientTab);
 
   const currentPatient: StorePatient | null =
     patients.find((p) => p.id === currentPatientId) ??
@@ -691,7 +694,9 @@ export default function MobilePrototypePage() {
   const [registeredEmail, setRegisteredEmail] = useState(rememberedUsername || seededEmail);
   const [justRegistered, setJustRegistered] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<AppTab>('home');
+  const [activeTab, setActiveTab] = useState<AppTab>(
+    () => useStore.getState().lastPatientTab ?? 'home'
+  );
   const [messagesIntent, setMessagesIntent] = useState<MessagesIntent>(null);
   const [displayName, setDisplayName] = useState(seededDisplayName);
   const [showCoordinatorIntro, setShowCoordinatorIntro] = useState(false);
@@ -703,12 +708,24 @@ export default function MobilePrototypePage() {
   // immediately bounce back into the app.
   useEffect(() => {
     if (!hasHydrated) return;
-    if (useStore.getState().hasCompletedOnboarding) {
+    const state = useStore.getState();
+    if (state.hasCompletedOnboarding) {
       setOnboardingStep((prev) => (prev === 'entry' ? 'app' : prev));
       setShowCoordinatorIntro(false);
     }
+    if (state.lastPatientTab) {
+      setActiveTab(state.lastPatientTab);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasHydrated]);
+
+  // Persist the active tab whenever it changes so a refresh lands the user
+  // back on the same tab they were viewing.
+  useEffect(() => {
+    if (!hasHydrated) return;
+    if (onboardingStep !== 'app') return;
+    setLastPatientTabAction(activeTab);
+  }, [activeTab, hasHydrated, onboardingStep, setLastPatientTabAction]);
 
   const todos = useMemo<MockTodo[]>(
     () => (currentPatient ? storeTodosToUiList(currentPatient.todos) : []),
@@ -808,7 +825,14 @@ export default function MobilePrototypePage() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-[#f0f5fb] sm:p-6">
+    <div className="relative min-h-[100dvh] bg-[#f0f5fb] sm:p-6">
+      <Link
+        href="/"
+        className="absolute right-4 top-4 z-20 hidden items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:right-6 sm:top-6 sm:inline-flex"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        Demo home
+      </Link>
       <div className="mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden bg-[#f4f7fb] sm:h-[880px] sm:rounded-[34px] sm:shadow-[0_28px_60px_rgba(15,23,42,0.24)]">
         {!hasHydrated ? (
           <div className="flex-1" aria-hidden />
