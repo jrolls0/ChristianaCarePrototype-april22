@@ -29,6 +29,8 @@ import { StaffShell, STAFF_CONTAINER } from '@/components/ui/StaffShell';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { StuckBadge } from '@/components/ui/StuckBadge';
 import { ThreadMessage } from '@/components/ui/ThreadMessage';
+import { AttachButton, AttachmentChips } from '@/components/ui/AttachmentRow';
+import { appendAttachmentSummary, type Attachment } from '@/lib/attachments';
 import { useStore } from '@/lib/store';
 import type { Patient, PatientStage, ThreadKey, Todo } from '@/lib/types';
 
@@ -194,6 +196,7 @@ export default function StaffCaseDetailPage() {
   const [todoOpen, setTodoOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<MsgTab>('patient');
   const [quickReply, setQuickReply] = useState('');
+  const [quickReplyAttachments, setQuickReplyAttachments] = useState<Attachment[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const patientThread = useMemo(() => {
@@ -232,6 +235,13 @@ export default function StaffCaseDetailPage() {
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [activeTab, activeThread.length]);
+
+  // Drop the in-progress reply when switching channels — attachments
+  // and draft text don't belong on the other thread.
+  useEffect(() => {
+    setQuickReply('');
+    setQuickReplyAttachments([]);
+  }, [activeTab]);
 
   const activity = useMemo(
     () => (patient ? buildActivity(patient) : []),
@@ -279,10 +289,17 @@ export default function StaffCaseDetailPage() {
 
   function handleQuickReply(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const body = quickReply.trim();
-    if (!body || !patient) return;
+    if (!patient) return;
+    const trimmed = quickReply.trim();
+    if (trimmed.length === 0 && quickReplyAttachments.length === 0) return;
+    const body = appendAttachmentSummary(trimmed, quickReplyAttachments);
     sendMessage(patient.id, 'staff', body, MSG_THREAD[activeTab]);
     setQuickReply('');
+    setQuickReplyAttachments([]);
+  }
+
+  function removeQuickReplyAttachment(id: string) {
+    setQuickReplyAttachments((previous) => previous.filter((a) => a.id !== id));
   }
 
   return (
@@ -525,35 +542,48 @@ export default function StaffCaseDetailPage() {
                   ))
                 )}
               </div>
-              <form
-                onSubmit={handleQuickReply}
-                className="flex items-end gap-2 border-t border-slate-100 bg-white px-3 py-3"
-              >
-                <textarea
-                  value={quickReply}
-                  onChange={(e) => setQuickReply(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
-                    }
-                  }}
-                  rows={1}
-                  placeholder={
-                    activeTab === 'patient'
-                      ? `Reply to ${patient.firstName}…`
-                      : `Reply to ${patient.referringClinic}…`
-                  }
-                  className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
+              <div className="border-t border-slate-100 bg-white">
+                <AttachmentChips
+                  attachments={quickReplyAttachments}
+                  onRemove={removeQuickReplyAttachment}
+                  className="px-3"
                 />
-                <button
-                  type="submit"
-                  disabled={!quickReply.trim()}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#3399e6] px-3 text-sm font-semibold text-white transition hover:bg-[#1a66cc] disabled:cursor-not-allowed disabled:bg-slate-300"
+                <form
+                  onSubmit={handleQuickReply}
+                  className="flex items-end gap-2 px-3 py-3"
                 >
-                  <Send className="h-3.5 w-3.5" />
-                  Send
-                </button>
-              </form>
+                  <textarea
+                    value={quickReply}
+                    onChange={(e) => setQuickReply(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+                      }
+                    }}
+                    rows={1}
+                    placeholder={
+                      activeTab === 'patient'
+                        ? `Reply to ${patient.firstName}…`
+                        : `Reply to ${patient.referringClinic}…`
+                    }
+                    className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
+                  />
+                  <AttachButton
+                    size="sm"
+                    onAttach={(next) =>
+                      setQuickReplyAttachments((previous) => [...previous, ...next])
+                    }
+                  />
+                  <button
+                    type="submit"
+                    disabled={!quickReply.trim() && quickReplyAttachments.length === 0}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#3399e6] px-3 text-sm font-semibold text-white transition hover:bg-[#1a66cc] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    Send
+                  </button>
+                </form>
+              </div>
             </section>
 
             {/* Patient info — merged */}

@@ -48,6 +48,11 @@ import {
 } from 'lucide-react';
 import { useStore } from '../../lib/store';
 import type { Patient as StorePatient, Todo as StoreTodo } from '../../lib/types';
+import {
+  type Attachment,
+  appendAttachmentSummary,
+} from '../../lib/attachments';
+import { AttachButton, AttachmentChips } from '../../components/ui/AttachmentRow';
 
 type OnboardingStep = 'entry' | 'servicesConsent' | 'medicalRecordsConsent' | 'carePartnerPrompt' | 'app';
 type EntryAuthTab = 'register' | 'login';
@@ -107,11 +112,7 @@ type CareThread = {
   messages: CareThreadMessage[];
 };
 
-type ComposeAttachment = {
-  id: string;
-  name: string;
-  sizeLabel: string;
-};
+type ComposeAttachment = Attachment;
 
 type QuickHelpChipData = {
   id: string;
@@ -3377,6 +3378,7 @@ function MessagesTab({
 
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(initialUnreadThreadId);
   const [threadReply, setThreadReply] = useState('');
+  const [threadReplyAttachments, setThreadReplyAttachments] = useState<Attachment[]>([]);
   const [threadSearch, setThreadSearch] = useState('');
   const [threadFilter, setThreadFilter] = useState<'all' | 'unread'>('all');
 
@@ -3421,15 +3423,19 @@ function MessagesTab({
     }
     setSelectedThreadId(threadId);
     setThreadReply('');
+    setThreadReplyAttachments([]);
   }
 
   function sendThreadReply() {
     const message = threadReply.trim();
-    if (!selectedThread || !message || !patient) return;
+    if (!selectedThread || !patient) return;
+    if (message.length === 0 && threadReplyAttachments.length === 0) return;
     const key = threadIdToKey(selectedThread.id);
     if (!key) return;
-    sendMessageAction(patient.id, 'patient', message, key);
+    const body = appendAttachmentSummary(message, threadReplyAttachments);
+    sendMessageAction(patient.id, 'patient', body, key);
     setThreadReply('');
+    setThreadReplyAttachments([]);
   }
 
   function sendComposedMessage() {
@@ -3437,15 +3443,8 @@ function MessagesTab({
     const subject = composeSubject.trim();
     if (!composeRecipientId || !message || !subject || !patient) return;
 
-    const attachmentSummary =
-      composeAttachments.length === 0
-        ? ''
-        : composeAttachments.length === 1
-          ? `Attached 1 document: ${composeAttachments[0]?.name}`
-          : `Attached ${composeAttachments.length} documents`;
     const bodyWithSubject = `${subject}\n\n${message}`;
-    const messageWithAttachments =
-      attachmentSummary.length > 0 ? `${bodyWithSubject}\n\n[${attachmentSummary}]` : bodyWithSubject;
+    const messageWithAttachments = appendAttachmentSummary(bodyWithSubject, composeAttachments);
 
     const key = threadIdToKey(composeRecipientId);
     if (!key) return;
@@ -3462,32 +3461,31 @@ function MessagesTab({
     markMessagesReadAction(patient.id, 'patient');
   }
 
-  function formatAttachmentSize(bytes: number) {
-    if (bytes >= 1024 * 1024) {
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-    if (bytes >= 1024) {
-      return `${Math.round(bytes / 1024)} KB`;
-    }
-    return `${bytes} B`;
-  }
-
   function handleComposeAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
     if (!files || files.length === 0) return;
-
-    const nextAttachments = Array.from(files).map((file, index) => ({
-      id: `${file.name}-${file.size}-${Date.now()}-${index}`,
-      name: file.name,
-      sizeLabel: formatAttachmentSize(file.size),
-    }));
-
-    setComposeAttachments((previous) => [...previous, ...nextAttachments]);
+    setComposeAttachments((previous) => [
+      ...previous,
+      ...Array.from(files).map((file, index) => ({
+        id: `${file.name}-${file.size}-${Date.now()}-${index}`,
+        name: file.name,
+        sizeLabel:
+          file.size >= 1024 * 1024
+            ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+            : file.size >= 1024
+              ? `${Math.round(file.size / 1024)} KB`
+              : `${file.size} B`,
+      })),
+    ]);
     event.target.value = '';
   }
 
   function removeComposeAttachment(attachmentId: string) {
     setComposeAttachments((previous) => previous.filter((attachment) => attachment.id !== attachmentId));
+  }
+
+  function removeThreadReplyAttachment(attachmentId: string) {
+    setThreadReplyAttachments((previous) => previous.filter((attachment) => attachment.id !== attachmentId));
   }
 
   const canSendComposedMessage =
@@ -3522,8 +3520,12 @@ function MessagesTab({
                 ))}
               </div>
 
-              <div className="border-t border-[#e3eaf4] bg-white p-3">
-                <div className="flex items-end gap-2">
+              <div className="border-t border-[#e3eaf4] bg-white">
+                <AttachmentChips
+                  attachments={threadReplyAttachments}
+                  onRemove={removeThreadReplyAttachment}
+                />
+                <div className="flex items-end gap-2 p-3">
                   <textarea
                     value={threadReply}
                     onChange={(event) => setThreadReply(event.target.value)}
@@ -3531,12 +3533,20 @@ function MessagesTab({
                     rows={1}
                     className="max-h-28 min-h-10 flex-1 resize-none rounded-2xl border border-[#dce4f0] bg-[#f4f7fb] px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
                   />
+                  <AttachButton
+                    size="sm"
+                    onAttach={(next) =>
+                      setThreadReplyAttachments((previous) => [...previous, ...next])
+                    }
+                  />
                   <button
                     type="button"
                     onClick={sendThreadReply}
-                    disabled={threadReply.trim().length === 0}
+                    disabled={threadReply.trim().length === 0 && threadReplyAttachments.length === 0}
                     className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                      threadReply.trim().length > 0 ? 'bg-[#3399e6] text-white' : 'bg-slate-200 text-slate-400'
+                      threadReply.trim().length > 0 || threadReplyAttachments.length > 0
+                        ? 'bg-[#3399e6] text-white'
+                        : 'bg-slate-200 text-slate-400'
                     }`}
                   >
                     <SendHorizontal className="h-4 w-4" />

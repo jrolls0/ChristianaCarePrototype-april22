@@ -22,6 +22,8 @@ import {
 import { StaffShell, STAFF_CONTAINER } from '@/components/ui/StaffShell';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { ThreadMessage } from '@/components/ui/ThreadMessage';
+import { AttachButton, AttachmentChips } from '@/components/ui/AttachmentRow';
+import { appendAttachmentSummary, type Attachment } from '@/lib/attachments';
 import { useStore } from '@/lib/store';
 import {
   TAB_THREAD,
@@ -83,6 +85,7 @@ function MessagesInner() {
   const [query, setQuery] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [reply, setReply] = useState('');
+  const [replyAttachments, setReplyAttachments] = useState<Attachment[]>([]);
   const [composeOpen, setComposeOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -163,6 +166,7 @@ function MessagesInner() {
   function handleSelect(c: ConversationSummary) {
     setSelectedKey(conversationKey(c.patient.id, c.tab));
     setReply('');
+    setReplyAttachments([]);
     // Drop URL params so they don't pin a stale selection
     if (qpPatient || qpThread) {
       router.replace('/staff/messages');
@@ -172,10 +176,16 @@ function MessagesInner() {
   function handleSendReply(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!selected) return;
-    const body = reply.trim();
-    if (!body) return;
+    const trimmed = reply.trim();
+    if (trimmed.length === 0 && replyAttachments.length === 0) return;
+    const body = appendAttachmentSummary(trimmed, replyAttachments);
     sendMessage(selected.patient.id, 'staff', body, selected.threadKey);
     setReply('');
+    setReplyAttachments([]);
+  }
+
+  function removeReplyAttachment(id: string) {
+    setReplyAttachments((previous) => previous.filter((a) => a.id !== id));
   }
 
   return (
@@ -400,35 +410,46 @@ function MessagesInner() {
                   ))}
                 </div>
 
-                <form
-                  onSubmit={handleSendReply}
-                  className="flex items-end gap-2 border-t border-slate-100 bg-white px-4 py-3"
-                >
-                  <textarea
-                    value={reply}
-                    onChange={(e) => setReply(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                        (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
-                      }
-                    }}
-                    rows={1}
-                    placeholder={
-                      selected.tab === 'patient'
-                        ? `Reply to ${selected.patient.firstName}…`
-                        : `Reply to ${selected.patient.referringClinic}…`
-                    }
-                    className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
+                <div className="border-t border-slate-100 bg-white">
+                  <AttachmentChips
+                    attachments={replyAttachments}
+                    onRemove={removeReplyAttachment}
                   />
-                  <button
-                    type="submit"
-                    disabled={!reply.trim()}
-                    className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-[#3399e6] px-4 text-sm font-semibold text-white transition hover:bg-[#1a66cc] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  <form
+                    onSubmit={handleSendReply}
+                    className="flex items-end gap-2 px-4 py-3"
                   >
-                    <Send className="h-4 w-4" />
-                    Send
-                  </button>
-                </form>
+                    <textarea
+                      value={reply}
+                      onChange={(e) => setReply(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                          (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+                        }
+                      }}
+                      rows={1}
+                      placeholder={
+                        selected.tab === 'patient'
+                          ? `Reply to ${selected.patient.firstName}…`
+                          : `Reply to ${selected.patient.referringClinic}…`
+                      }
+                      className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
+                    />
+                    <AttachButton
+                      onAttach={(next) =>
+                        setReplyAttachments((previous) => [...previous, ...next])
+                      }
+                    />
+                    <button
+                      type="submit"
+                      disabled={!reply.trim() && replyAttachments.length === 0}
+                      className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-[#3399e6] px-4 text-sm font-semibold text-white transition hover:bg-[#1a66cc] disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      <Send className="h-4 w-4" />
+                      Send
+                    </button>
+                  </form>
+                </div>
               </>
             )}
           </section>
