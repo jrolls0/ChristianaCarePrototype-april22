@@ -21,6 +21,8 @@ import {
   Shield,
   Sparkles,
   Stethoscope,
+  Trash2,
+  Upload,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -669,8 +671,8 @@ export default function StaffCaseDetailPage() {
       {todoOpen && (
         <AddTodoModal
           onClose={() => setTodoOpen(false)}
-          onSubmit={(title, description) => {
-            addCustomTodo(patient.id, title, description);
+          onSubmit={(title, description, documentRequests) => {
+            addCustomTodo(patient.id, title, description, documentRequests);
             setTodoOpen(false);
           }}
         />
@@ -732,29 +734,62 @@ function MsgTabButton({
   );
 }
 
+type DocRequestDraft = { key: string; title: string; description: string };
+
 function AddTodoModal({
   onClose,
   onSubmit,
 }: {
   onClose: () => void;
-  onSubmit: (title: string, description: string) => void;
+  onSubmit: (
+    title: string,
+    description: string,
+    documentRequests: { title: string; description?: string }[]
+  ) => void;
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [docRequests, setDocRequests] = useState<DocRequestDraft[]>([]);
+
+  function addDocRequest() {
+    setDocRequests((prev) => [
+      ...prev,
+      { key: `dr-${Date.now()}-${prev.length}`, title: '', description: '' },
+    ]);
+  }
+
+  function updateDocRequest(key: string, patch: Partial<DocRequestDraft>) {
+    setDocRequests((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  function removeDocRequest(key: string) {
+    setDocRequests((prev) => prev.filter((r) => r.key !== key));
+  }
+
+  const cleanedRequests = docRequests
+    .map((r) => ({
+      title: r.title.trim(),
+      description: r.description.trim() ? r.description.trim() : undefined,
+    }))
+    .filter((r) => r.title.length > 0);
+
+  const hasDocRows = docRequests.length > 0;
+  const allDocRowsValid = !hasDocRows || docRequests.every((r) => r.title.trim().length > 0);
+  const canSubmit = title.trim().length > 0 && allDocRowsValid;
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!title.trim()) return;
-    onSubmit(title.trim(), description.trim());
+    if (!canSubmit) return;
+    onSubmit(title.trim(), description.trim(), cleanedRequests);
   }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 py-6 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl"
+        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
@@ -772,50 +807,113 @@ function AddTodoModal({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Templates
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Templates
+              </label>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {TODO_TEMPLATES.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTitle(t)}
+                    className="rounded-full bg-[#eef6ff] px-3 py-1 text-xs font-medium text-[#1a66cc] transition hover:bg-[#dbeeff]"
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Title *
+              </span>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="What does the patient need to do?"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+                autoFocus
+              />
             </label>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {TODO_TEMPLATES.map((t) => (
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Description (optional)
+              </span>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                placeholder="Add any helpful detail for the patient."
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+              />
+            </label>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Required uploads (optional)
+                </span>
                 <button
-                  key={t}
                   type="button"
-                  onClick={() => setTitle(t)}
-                  className="rounded-full bg-[#eef6ff] px-3 py-1 text-xs font-medium text-[#1a66cc] transition hover:bg-[#dbeeff]"
+                  onClick={addDocRequest}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-[#1a66cc] hover:bg-[#eef6ff]"
                 >
-                  {t}
+                  <PlusCircle className="h-3.5 w-3.5" />
+                  Add document
                 </button>
-              ))}
+              </div>
+              {docRequests.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                  Leave empty for a simple to-do. Add a row for each photo or document the patient
+                  must upload (e.g. front + back of a card).
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {docRequests.map((req, idx) => (
+                    <div
+                      key={req.key}
+                      className="space-y-2 rounded-xl border border-dashed border-[#cfdcec] bg-[#f8fbff] p-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#1a66cc]">
+                          <Upload className="h-3.5 w-3.5" />
+                          Document {idx + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeDocRequest(req.key)}
+                          className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-red-600"
+                          aria-label="Remove document request"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={req.title}
+                        onChange={(e) => updateDocRequest(req.key, { title: e.target.value })}
+                        placeholder="Document title (e.g. Insurance Card — Front)"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+                      />
+                      <input
+                        type="text"
+                        value={req.description}
+                        onChange={(e) => updateDocRequest(req.key, { description: e.target.value })}
+                        placeholder="Short helper text (optional)"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-          <label className="block space-y-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Title *
-            </span>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="What does the patient need to do?"
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
-              autoFocus
-            />
-          </label>
-          <label className="block space-y-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Description (optional)
-            </span>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="Add any helpful detail for the patient."
-              className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
-            />
-          </label>
-          <div className="flex items-center justify-end gap-2 pt-2">
+
+          <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
             <button
               type="button"
               onClick={onClose}
@@ -825,7 +923,7 @@ function AddTodoModal({
             </button>
             <button
               type="submit"
-              disabled={!title.trim()}
+              disabled={!canSubmit}
               className="inline-flex items-center gap-1.5 rounded-xl bg-[#3399e6] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a66cc] disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <PlusCircle className="h-4 w-4" />

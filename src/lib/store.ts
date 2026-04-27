@@ -199,9 +199,15 @@ export const useStore = create<DemoState>()(
         });
       },
 
-      addCustomTodo: (patientId, title, description) => {
+      addCustomTodo: (patientId, title, description, documentRequests) => {
         const now = new Date().toISOString();
         const staffName = get().currentStaffName;
+        const cleanedRequests = (documentRequests ?? [])
+          .map((r) => ({
+            title: r.title.trim(),
+            description: r.description?.trim() ? r.description.trim() : undefined,
+          }))
+          .filter((r) => r.title.length > 0);
         const todo: Todo = {
           id: `todo-custom-${nextIdSuffix()}`,
           type: 'custom',
@@ -211,6 +217,14 @@ export const useStore = create<DemoState>()(
           isCustom: true,
           addedByStaff: staffName,
           addedAt: now,
+          documentRequests:
+            cleanedRequests.length > 0
+              ? cleanedRequests.map((r, idx) => ({
+                  id: `docreq-${nextIdSuffix()}-${idx}`,
+                  title: r.title,
+                  description: r.description,
+                }))
+              : undefined,
         };
         set({
           patients: get().patients.map((p) =>

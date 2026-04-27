@@ -48,7 +48,11 @@ import {
   Users,
 } from 'lucide-react';
 import { useStore } from '../../lib/store';
-import type { Patient as StorePatient, Todo as StoreTodo } from '../../lib/types';
+import type {
+  DocumentRequest as StoreDocumentRequest,
+  Patient as StorePatient,
+  Todo as StoreTodo,
+} from '../../lib/types';
 import {
   type Attachment,
   appendAttachmentSummary,
@@ -75,6 +79,7 @@ type MockTodo = {
     | 'educationVideo'
     | 'customStaffTodo';
   addedByStaff?: string;
+  documentRequests?: StoreDocumentRequest[];
 };
 
 type QuestionnaireStep = 1 | 2;
@@ -230,6 +235,7 @@ function mapStoreTodoToUi(todo: StoreTodo): MockTodo {
     priority,
     type: uiType,
     addedByStaff: todo.addedByStaff,
+    documentRequests: todo.documentRequests,
   };
 }
 
@@ -834,6 +840,10 @@ export default function MobilePrototypePage() {
     } else if (todo.type === 'upload-insurance-card') {
       uploadDocumentAction(patientId, 'Insurance Card — front', 'patient');
       uploadDocumentAction(patientId, 'Insurance Card — back', 'patient');
+    } else if (todo.type === 'custom' && todo.documentRequests?.length) {
+      todo.documentRequests.forEach((req) => {
+        uploadDocumentAction(patientId, req.title, 'patient');
+      });
     }
     completeTodoAction(patientId, todoId);
   }
@@ -2190,6 +2200,12 @@ function CustomStaffTaskCard({
   onComplete: () => void;
   todo: MockTodo;
 }) {
+  const docRequests = todo.documentRequests ?? [];
+  const [uploadedIds, setUploadedIds] = useState<Set<string>>(new Set());
+  const allUploaded =
+    docRequests.length === 0 ||
+    docRequests.every((req) => uploadedIds.has(req.id));
+
   return (
     <TodoWorkspaceShell
       onClose={onClose}
@@ -2200,13 +2216,40 @@ function CustomStaffTaskCard({
           : 'Added by your ChristianaCare care team.'
       }
     >
-      <div className="rounded-xl border border-[#d7e4f1] bg-[#f8fbff] p-3 text-sm leading-relaxed text-slate-700">
-        {todo.description || 'Please complete this task so your care team can keep your evaluation on track.'}
-      </div>
+      {todo.description ? (
+        <div className="rounded-xl border border-[#d7e4f1] bg-[#f8fbff] p-3 text-sm leading-relaxed text-slate-700">
+          {todo.description}
+        </div>
+      ) : docRequests.length === 0 ? (
+        <div className="rounded-xl border border-[#d7e4f1] bg-[#f8fbff] p-3 text-sm leading-relaxed text-slate-700">
+          Please complete this task so your care team can keep your evaluation on track.
+        </div>
+      ) : null}
+
+      {docRequests.map((req) => (
+        <SimulatedUploadCard
+          key={req.id}
+          title={req.title}
+          helperText={req.description || 'Tap below to simulate uploading this document.'}
+          buttonLabel="Simulate Upload"
+          isUploaded={uploadedIds.has(req.id)}
+          onSimulateUpload={() =>
+            setUploadedIds((prev) => {
+              const next = new Set(prev);
+              next.add(req.id);
+              return next;
+            })
+          }
+        />
+      ))}
+
       <button
         type="button"
         onClick={onComplete}
-        className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#3399e6] text-sm font-semibold text-white shadow-[0_10px_20px_rgba(51,153,230,0.32)]"
+        disabled={!allUploaded}
+        className={`inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition ${
+          allUploaded ? 'bg-[#3399e6] shadow-[0_10px_20px_rgba(51,153,230,0.32)]' : 'bg-slate-300'
+        }`}
       >
         Mark As Completed
       </button>

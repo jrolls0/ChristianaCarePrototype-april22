@@ -20,6 +20,12 @@ export type TodoType =
 
 export type TodoStatus = 'pending' | 'completed';
 
+export interface DocumentRequest {
+  id: string;
+  title: string;
+  description?: string;
+}
+
 export interface Todo {
   id: string;
   type: TodoType;
@@ -30,6 +36,7 @@ export interface Todo {
   isCustom?: boolean;
   addedByStaff?: string;
   addedAt?: string;
+  documentRequests?: DocumentRequest[];
 }
 
 export type ThreadKey = 'dusw' | 'tc-frontdesk' | 'clinic-staff';
@@ -121,7 +128,12 @@ export interface DemoState {
   markOnboardingComplete: () => void;
   setLastPatientTab: (tab: PatientTab) => void;
   completeTodo: (patientId: string, todoId: string) => void;
-  addCustomTodo: (patientId: string, title: string, description: string) => void;
+  addCustomTodo: (
+    patientId: string,
+    title: string,
+    description: string,
+    documentRequests?: { title: string; description?: string }[]
+  ) => void;
   addEmergencyContactTodo: (patientId: string) => void;
   addEducationTodo: (patientId: string) => void;
   ensureInitialTodos: (patientId: string) => void;
