@@ -12,6 +12,7 @@ import type {
   Todo,
 } from './types';
 import { createInitialState } from './seedData';
+import { getNextPatientStage, normalizePatientStage } from './stages';
 
 export const STORAGE_KEY = 'transplant-prototype-state-v1';
 
@@ -30,6 +31,78 @@ const replacePatient = (patients: Patient[], updated: Patient): Patient[] =>
   patients.map((p) => (p.id === updated.id ? updated : p));
 
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
+
+const normalizePersistedPatients = (patients: Patient[] | undefined): Patient[] | undefined =>
+  patients?.map((p) => ({
+    ...p,
+    stage: normalizePatientStage(p.stage),
+  }));
+
+const migratePersistedState = (persistedState: unknown): Partial<DemoState> => {
+  const state =
+    persistedState && typeof persistedState === 'object'
+      ? (persistedState as Partial<DemoState>)
+      : {};
+  return {
+    ...state,
+    patients: normalizePersistedPatients(state.patients),
+  };
+};
+
+const REQUIRED_INITIAL_TODO_TYPES: Todo['type'][] = [
+  'upload-government-id',
+  'upload-insurance-card',
+  'complete-health-questionnaire',
+];
+
+function buildInitialTodo(patientId: string, type: Todo['type']): Todo {
+  switch (type) {
+    case 'upload-government-id':
+      return {
+        id: `todo-${patientId}-gov-id`,
+        type,
+        title: 'Upload Government ID',
+        description: "A clear photo of your driver's license or passport.",
+        status: 'pending',
+      };
+    case 'upload-insurance-card':
+      return {
+        id: `todo-${patientId}-insurance`,
+        type,
+        title: 'Upload Insurance Card',
+        description: 'Front and back of your primary insurance card.',
+        status: 'pending',
+      };
+    case 'complete-health-questionnaire':
+      return {
+        id: `todo-${patientId}-health`,
+        type,
+        title: 'Complete Health Questionnaire',
+        description: 'A short form about your current health and medical history.',
+        status: 'pending',
+      };
+    default:
+      throw new Error(`Unsupported initial todo type: ${type}`);
+  }
+}
+
+function initialTodosComplete(todos: Todo[]): boolean {
+  return REQUIRED_INITIAL_TODO_TYPES.every((type) =>
+    todos.some((todo) => todo.type === type && todo.status === 'completed')
+  );
+}
+
+function advanceAfterInitialTodos(patient: Patient, now: string): Patient {
+  if (normalizePatientStage(patient.stage) !== 'initial-todos') return patient;
+  if (!initialTodosComplete(patient.todos)) return patient;
+  return {
+    ...patient,
+    stage: 'initial-screening',
+    daysInStage: 0,
+    isStuck: false,
+    lastActivityAt: now,
+  };
+}
 
 const newSafeStorage = () =>
   createJSONStorage(() => {
@@ -130,7 +203,7 @@ export const useStore = create<DemoState>()(
             referringClinician: data.nephrologistName,
             referralSource: 'clinic',
             referralDate: now,
-            stage: 'patient-onboarding',
+            stage: 'onboarding',
             daysInStage: 0,
             isStuck: false,
             lastActivityAt: now,
@@ -160,7 +233,7 @@ export const useStore = create<DemoState>()(
           nephrologistName: data.nephrologistName,
           nephrologistEmail: data.nephrologistEmail,
           referralDate: now,
-          stage: 'patient-onboarding',
+          stage: 'onboarding',
           daysInStage: 0,
           isStuck: false,
           todos: [],
@@ -246,7 +319,7 @@ export const useStore = create<DemoState>()(
               data.preferredLanguage || match.preferredLanguage,
             portalAccount,
             hasCompletedOnboarding: match.hasCompletedOnboarding ?? false,
-            stage: wasNewReferral ? 'patient-onboarding' : match.stage,
+            stage: wasNewReferral ? 'onboarding' : normalizePatientStage(match.stage),
             daysInStage: wasNewReferral ? 0 : match.daysInStage,
             isStuck: wasNewReferral ? false : match.isStuck,
             lastActivityAt: now,
@@ -291,7 +364,7 @@ export const useStore = create<DemoState>()(
           nephrologistName: data.nephrologistName,
           nephrologistEmail: data.nephrologistEmail,
           referralDate: now,
-          stage: 'patient-onboarding',
+          stage: 'onboarding',
           daysInStage: 0,
           isStuck: false,
           portalAccount,
@@ -343,19 +416,19 @@ export const useStore = create<DemoState>()(
       completeTodo: (patientId, todoId) => {
         const now = new Date().toISOString();
         set({
-          patients: get().patients.map((p) =>
-            p.id !== patientId
-              ? p
-              : {
-                  ...p,
-                  lastActivityAt: now,
-                  todos: p.todos.map((t) =>
-                    t.id === todoId
-                      ? { ...t, status: 'completed', completedAt: now }
-                      : t
-                  ),
-                }
-          ),
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId) return p;
+            const updated: Patient = {
+              ...p,
+              lastActivityAt: now,
+              todos: p.todos.map((t) =>
+                t.id === todoId
+                  ? { ...t, status: 'completed', completedAt: now }
+                  : t
+              ),
+            };
+            return advanceAfterInitialTodos(updated, now);
+          }),
         });
       },
 
@@ -403,31 +476,11 @@ export const useStore = create<DemoState>()(
         set({
           patients: get().patients.map((p) => {
             if (p.id !== patientId) return p;
-            if (p.todos.length > 0) return p;
-            const initial: Todo[] = [
-              {
-                id: `todo-${p.id}-gov-id`,
-                type: 'upload-government-id',
-                title: 'Upload Government ID',
-                description: "A clear photo of your driver's license or passport.",
-                status: 'pending',
-              },
-              {
-                id: `todo-${p.id}-insurance`,
-                type: 'upload-insurance-card',
-                title: 'Upload Insurance Card',
-                description: 'Front and back of your primary insurance card.',
-                status: 'pending',
-              },
-              {
-                id: `todo-${p.id}-health`,
-                type: 'complete-health-questionnaire',
-                title: 'Complete Health Questionnaire',
-                description: 'A short form about your current health and medical history.',
-                status: 'pending',
-              },
-            ];
-            return { ...p, todos: initial };
+            const missingTodos = REQUIRED_INITIAL_TODO_TYPES.filter(
+              (type) => !p.todos.some((todo) => todo.type === type)
+            ).map((type) => buildInitialTodo(p.id, type));
+            if (missingTodos.length === 0) return p;
+            return { ...p, todos: [...p.todos, ...missingTodos] };
           }),
         });
       },
@@ -575,10 +628,20 @@ export const useStore = create<DemoState>()(
       },
 
       markOnboardingComplete: (patientId) => {
+        const now = new Date().toISOString();
         set({
-          patients: get().patients.map((p) =>
-            p.id === patientId ? { ...p, hasCompletedOnboarding: true } : p
-          ),
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId) return p;
+            const normalizedStage = normalizePatientStage(p.stage);
+            return {
+              ...p,
+              stage: normalizedStage === 'onboarding' ? 'initial-todos' : normalizedStage,
+              daysInStage: normalizedStage === 'onboarding' ? 0 : p.daysInStage,
+              isStuck: normalizedStage === 'onboarding' ? false : p.isStuck,
+              lastActivityAt: now,
+              hasCompletedOnboarding: true,
+            };
+          }),
         });
       },
 
@@ -587,25 +650,15 @@ export const useStore = create<DemoState>()(
       },
 
       advancePatientStage: (patientId) => {
-        const STAGE_ORDER: Patient['stage'][] = [
-          'new-referral',
-          'patient-onboarding',
-          'initial-todos',
-          'front-desk-review',
-          'screening',
-          'records-collection',
-          'specialist-review',
-          'scheduled',
-        ];
         const now = new Date().toISOString();
         set({
           patients: get().patients.map((p) => {
             if (p.id !== patientId) return p;
-            const idx = STAGE_ORDER.indexOf(p.stage);
-            if (idx === -1 || idx === STAGE_ORDER.length - 1) return p;
+            const nextStage = getNextPatientStage(p.stage);
+            if (!nextStage) return p;
             return {
               ...p,
-              stage: STAGE_ORDER[idx + 1],
+              stage: nextStage,
               daysInStage: 0,
               isStuck: false,
               lastActivityAt: now,
@@ -622,7 +675,9 @@ export const useStore = create<DemoState>()(
     }),
     {
       name: STORAGE_KEY,
+      version: 2,
       storage: newSafeStorage(),
+      migrate: (persistedState) => migratePersistedState(persistedState),
       partialize: (state) => ({
         patients: state.patients,
         currentPatientId: state.currentPatientId,
@@ -634,9 +689,14 @@ export const useStore = create<DemoState>()(
         if (!state) return;
         state.patients = state.patients.map((p) =>
           p.referralSource
-            ? { ...p, hasCompletedOnboarding: p.hasCompletedOnboarding ?? false }
+            ? {
+                ...p,
+                stage: normalizePatientStage(p.stage),
+                hasCompletedOnboarding: p.hasCompletedOnboarding ?? false,
+              }
             : {
                 ...p,
+                stage: normalizePatientStage(p.stage),
                 referralSource: 'clinic' as const,
                 hasCompletedOnboarding: p.hasCompletedOnboarding ?? false,
               }

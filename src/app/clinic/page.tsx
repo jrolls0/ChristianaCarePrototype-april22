@@ -21,10 +21,11 @@ import {
 import { ShellHeader } from '@/components/ui/ShellHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { useStore } from '@/lib/store';
+import { PATIENT_STAGE_SHORT_LABEL, VISIBLE_PATIENT_STAGES } from '@/lib/stages';
 import type { Message, PatientStage } from '@/lib/types';
 
 const AWAITING_PATIENT_STAGES: PatientStage[] = [
-  'patient-onboarding',
+  'onboarding',
   'initial-todos',
 ];
 
@@ -64,10 +65,10 @@ function waitingOnLabel(stage: PatientStage): {
 } {
   switch (stage) {
     case 'new-referral':
-    case 'patient-onboarding':
+    case 'onboarding':
     case 'initial-todos':
       return { label: 'Patient', tone: 'patient' };
-    case 'records-collection':
+    case 'records-clinical-review':
       return { label: 'Records (clinic)', tone: 'records' };
     default:
       return { label: 'ChristianaCare', tone: 'staff' };
@@ -127,15 +128,10 @@ function KpiCard({
 }
 
 function StageProgressBar({ stage }: { stage: PatientStage }) {
-  const STAGES: { key: PatientStage; label: string }[] = [
-    { key: 'patient-onboarding', label: 'Onboarding' },
-    { key: 'initial-todos', label: 'To-Dos' },
-    { key: 'front-desk-review', label: 'Review' },
-    { key: 'screening', label: 'Screening' },
-    { key: 'records-collection', label: 'Records' },
-    { key: 'specialist-review', label: 'Specialists' },
-    { key: 'scheduled', label: 'Scheduled' },
-  ];
+  const STAGES = VISIBLE_PATIENT_STAGES.map((key) => ({
+    key,
+    label: PATIENT_STAGE_SHORT_LABEL[key],
+  }));
   const currentIdx = STAGES.findIndex((s) => s.key === stage);
   return (
     <div className="flex items-center gap-1.5">
@@ -248,7 +244,7 @@ export default function ClinicDashboardPage() {
         AWAITING_PATIENT_STAGES.includes(p.stage)
       ).length,
       awaitingRecords: patients.filter(
-        (p) => p.stage === 'records-collection'
+        (p) => p.stage === 'records-clinical-review'
       ).length,
     }),
     [patients]

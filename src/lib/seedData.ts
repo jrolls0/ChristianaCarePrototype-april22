@@ -302,7 +302,7 @@ const buildRobert = (): Patient => {
     nephrologistName: WILMINGTON_NEPH.name,
     nephrologistEmail: WILMINGTON_NEPH.email,
     referralDate: daysAgoIso(11),
-    stage: 'initial-todos',
+    stage: 'initial-screening',
     daysInStage: 6,
     isStuck: true,
     todos: [
@@ -310,7 +310,7 @@ const buildRobert = (): Patient => {
       ROI_MEDICAL(id, 'completed', 10 * 24),
       GOV_ID(id, 'completed', 9 * 24),
       INSURANCE(id, 'completed', 9 * 24),
-      HEALTH_Q(id, 'pending'),
+      HEALTH_Q(id, 'completed', 7 * 24),
       EMERGENCY(id, 'completed', 8 * 24),
     ],
     messages: [
@@ -332,7 +332,7 @@ const buildRobert = (): Patient => {
         fromRole: 'staff',
         fromName: STAFF_NAME,
         body:
-          "Hi Robert — I'm Sarah from ChristianaCare. Thanks for starting your onboarding tasks. One more item on the list: the health questionnaire.",
+          "Hi Robert — I'm Sarah from ChristianaCare. Your intake tasks are complete, and your responses are in initial screening.",
         hoursAgo: 8 * 24,
         readByPatient: true,
       }),
@@ -343,7 +343,7 @@ const buildRobert = (): Patient => {
         fromRole: 'staff',
         fromName: STAFF_NAME,
         body:
-          "Hi Robert, checking in on the health questionnaire. It takes about 10 minutes and helps our team prepare for your screening call.",
+          "Hi Robert, our team is taking a closer look at one screening response before we can route you to financial screening.",
         hoursAgo: 4 * 24,
         readByPatient: true,
       }),
@@ -354,7 +354,7 @@ const buildRobert = (): Patient => {
         fromRole: 'staff',
         fromName: STAFF_NAME,
         body:
-          "Following up one more time. If it's easier to do this over the phone, just reply here and I'll set up a call.",
+          "Following up one more time. If it's easier to clarify this over the phone, just reply here and I'll set up a call.",
         hoursAgo: 1 * 24,
         readByPatient: false,
         readByStaff: true,
@@ -393,7 +393,7 @@ const buildLinda = (): Patient => {
     nephrologistName: RIVERSIDE_NEPH.name,
     nephrologistEmail: RIVERSIDE_NEPH.email,
     referralDate: daysAgoIso(19),
-    stage: 'records-collection',
+    stage: 'records-clinical-review',
     daysInStage: 4,
     isStuck: false,
     todos: [
@@ -461,7 +461,7 @@ const buildJames = (): Patient => {
     nephrologistName: BRANDYWINE_NEPH.name,
     nephrologistEmail: BRANDYWINE_NEPH.email,
     referralDate: daysAgoIso(9),
-    stage: 'screening',
+    stage: 'education',
     daysInStage: 2,
     isStuck: false,
     todos: [
@@ -491,7 +491,7 @@ const buildJames = (): Patient => {
         fromRole: 'staff',
         fromName: STAFF_NAME,
         body:
-          "James, our screening team is reviewing your responses now. I'll follow up this week with next steps.",
+          "James, your case has been approved to continue. Your education tasks are ready in the patient portal, and I'll follow up with next steps once those are complete.",
         hoursAgo: 1 * 24,
         readByPatient: false,
         readByStaff: true,
@@ -530,15 +530,15 @@ const buildPatricia = (): Patient => {
     nephrologistName: RIVERSIDE_NEPH.name,
     nephrologistEmail: RIVERSIDE_NEPH.email,
     referralDate: daysAgoIso(3),
-    stage: 'initial-todos',
+    stage: 'financial-screening',
     daysInStage: 1,
     isStuck: false,
     todos: [
       ROI_SERVICES(id, 'completed', 20),
       ROI_MEDICAL(id, 'completed', 20),
-      GOV_ID(id, 'pending'),
-      INSURANCE(id, 'pending'),
-      HEALTH_Q(id, 'pending'),
+      GOV_ID(id, 'completed', 22),
+      INSURANCE(id, 'completed', 22),
+      HEALTH_Q(id, 'completed', 21),
       EMERGENCY(id, 'pending'),
     ],
     messages: [
@@ -560,12 +560,16 @@ const buildPatricia = (): Patient => {
         fromRole: 'staff',
         fromName: STAFF_NAME,
         body:
-          "Welcome, Patricia! Thanks for signing the consent forms. Your next tasks are ready in your to-do list.",
+          "Welcome, Patricia! Thanks for completing your intake tasks. Our financial team is reviewing your insurance before we move into clinical review.",
         hoursAgo: 18,
         readByPatient: true,
       }),
     ],
-    documents: [],
+    documents: [
+      buildDoc(id, 'gov-id', 'Government ID — front', 22),
+      buildDoc(id, 'insurance-front', 'Insurance Card — front', 22),
+      buildDoc(id, 'insurance-back', 'Insurance Card — back', 22),
+    ],
     lastActivityAt: hoursAgoIso(18),
   };
 };
@@ -588,7 +592,7 @@ const buildDavid = (): Patient => {
     nephrologistName: RIVERSIDE_NEPH.name,
     nephrologistEmail: RIVERSIDE_NEPH.email,
     referralDate: daysAgoIso(26),
-    stage: 'specialist-review',
+    stage: 'final-decision',
     daysInStage: 3,
     isStuck: false,
     todos: [
@@ -607,7 +611,7 @@ const buildDavid = (): Patient => {
         fromRole: 'staff',
         fromName: STAFF_NAME,
         body:
-          "Hi David — your file is with our dietitian this week for a quick review. I'll reach out once that step is complete.",
+          "Hi David — your records and clinical review are complete. Your case is with the senior coordinator for final decision review.",
         hoursAgo: 2 * 24,
         readByPatient: true,
       }),
@@ -638,6 +642,83 @@ const buildDavid = (): Patient => {
   };
 };
 
+const buildElaine = (): Patient => {
+  const id = 'patient-elaine';
+  return {
+    id,
+    firstName: 'Elaine',
+    lastName: 'Barnes',
+    email: 'elaine.barnes@email.com',
+    phone: '(302) 555-0742',
+    dob: '1964-09-12',
+    preferredLanguage: 'English',
+    referralSource: 'clinic',
+    referringClinic: WILMINGTON,
+    referringClinician: WILMINGTON_NEPH.name,
+    duswName: WILMINGTON_DUSW.name,
+    duswEmail: WILMINGTON_DUSW.email,
+    nephrologistName: WILMINGTON_NEPH.name,
+    nephrologistEmail: WILMINGTON_NEPH.email,
+    referralDate: daysAgoIso(31),
+    stage: 'scheduling',
+    daysInStage: 2,
+    isStuck: false,
+    todos: [
+      ROI_SERVICES(id, 'completed', 30 * 24),
+      ROI_MEDICAL(id, 'completed', 30 * 24),
+      GOV_ID(id, 'completed', 29 * 24),
+      INSURANCE(id, 'completed', 29 * 24),
+      HEALTH_Q(id, 'completed', 26 * 24),
+      EMERGENCY(id, 'completed', 25 * 24),
+      buildTodo({
+        patientId: id,
+        type: 'watch-education-video',
+        slug: 'education-video',
+        title: 'Watch Transplant Education Video',
+        description: 'Complete the required transplant education before scheduling.',
+        status: 'completed',
+        completedHoursAgo: 4 * 24,
+      }),
+    ],
+    messages: [
+      buildMessage({
+        patientId: id,
+        slug: 'fd-scheduling',
+        threadKey: 'tc-frontdesk',
+        fromRole: 'staff',
+        fromName: STAFF_NAME,
+        body:
+          "Elaine, your education step is complete. Our front desk is coordinating appointment windows for your evaluation visit.",
+        hoursAgo: 2 * 24,
+        readByPatient: true,
+      }),
+      buildMessage({
+        patientId: id,
+        slug: 'patient-window',
+        threadKey: 'tc-frontdesk',
+        fromRole: 'patient',
+        fromName: 'Elaine Barnes',
+        body: 'Tuesday morning or Thursday afternoon would work best for me.',
+        hoursAgo: 1 * 24,
+        readByPatient: true,
+        readByStaff: false,
+      }),
+    ],
+    documents: [
+      buildDoc(id, 'gov-id', 'Government ID — front', 29 * 24),
+      buildDoc(id, 'insurance-front', 'Insurance Card — front', 29 * 24),
+      buildDoc(id, 'insurance-back', 'Insurance Card — back', 29 * 24),
+    ],
+    lastActivityAt: daysAgoIso(1),
+    emergencyContact: {
+      name: 'Thomas Barnes',
+      email: 'thomas.barnes@email.com',
+      phone: '(302) 555-0758',
+      consented: true,
+    },
+  };
+};
+
 const buildRobertHayes = (): Patient => {
   const id = 'patient-robert-hayes';
   return {
@@ -650,7 +731,7 @@ const buildRobertHayes = (): Patient => {
     preferredLanguage: 'English',
     referralSource: 'self',
     referralDate: daysAgoIso(2),
-    stage: 'patient-onboarding',
+    stage: 'onboarding',
     daysInStage: 2,
     isStuck: false,
     todos: [
@@ -697,6 +778,7 @@ export const createInitialState = (): InitialState => ({
     buildJames(),
     buildPatricia(),
     buildDavid(),
+    buildElaine(),
     buildRobertHayes(),
   ],
   currentPatientId: null,

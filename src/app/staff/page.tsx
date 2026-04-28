@@ -20,29 +20,23 @@ import { StaffShell, STAFF_CONTAINER } from '@/components/ui/StaffShell';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { StuckBadge } from '@/components/ui/StuckBadge';
 import { useStore } from '@/lib/store';
+import { PATIENT_STAGE_LABEL } from '@/lib/stages';
 import type { Patient, PatientStage } from '@/lib/types';
 
 type PriorityFilter = 'all' | 'stuck' | 'new' | 'self-signups';
-type StageKey = 'onboarding' | 'screening' | 'records' | 'specialists';
+type StageKey = Exclude<PatientStage, 'new-referral'>;
 type StageFilter = 'all' | StageKey;
 
 const STAGE_FILTERS: { key: StageKey; label: string }[] = [
   { key: 'onboarding', label: 'Onboarding' },
-  { key: 'screening', label: 'Screening' },
-  { key: 'records', label: 'Records' },
-  { key: 'specialists', label: 'Specialists' },
+  { key: 'initial-todos', label: 'Initial To-Dos' },
+  { key: 'initial-screening', label: 'Initial Screening' },
+  { key: 'financial-screening', label: 'Financial' },
+  { key: 'records-clinical-review', label: 'Records & Clinical' },
+  { key: 'final-decision', label: 'Final Decision' },
+  { key: 'education', label: 'Education' },
+  { key: 'scheduling', label: 'Scheduling' },
 ];
-
-const STAGE_LABEL: Record<PatientStage, string> = {
-  'new-referral': 'New Referral',
-  'patient-onboarding': 'Patient Onboarding',
-  'initial-todos': 'Initial To-Dos',
-  'front-desk-review': 'Front Desk Review',
-  screening: 'Screening',
-  'records-collection': 'Records Collection',
-  'specialist-review': 'Specialist Review',
-  scheduled: 'Scheduled',
-};
 
 const PRIORITY_LABEL: Record<PriorityFilter, string> = {
   all: 'All active cases',
@@ -78,18 +72,7 @@ function matchesPriority(patient: Patient, filter: PriorityFilter, now: number):
 }
 
 function matchesStage(patient: Patient, filter: StageFilter): boolean {
-  switch (filter) {
-    case 'all':
-      return true;
-    case 'onboarding':
-      return patient.stage === 'patient-onboarding' || patient.stage === 'initial-todos';
-    case 'screening':
-      return patient.stage === 'screening' || patient.stage === 'front-desk-review';
-    case 'records':
-      return patient.stage === 'records-collection';
-    case 'specialists':
-      return patient.stage === 'specialist-review' || patient.stage === 'scheduled';
-  }
+  return filter === 'all' || patient.stage === filter;
 }
 
 function daysInStageTone(days: number) {
@@ -115,7 +98,7 @@ function searchText(patient: Patient): string {
     patient.duswName,
     patient.nephrologistName,
     patient.referralSource,
-    STAGE_LABEL[patient.stage],
+    PATIENT_STAGE_LABEL[patient.stage],
     nextAction(patient),
   ]
     .filter(Boolean)
@@ -202,13 +185,6 @@ export default function StaffDashboardPage() {
     });
   }, [patients, priorityFilter, stageFilter, query, now]);
 
-  const hasTableRefinements = stageFilter !== 'all' || query.trim().length > 0;
-
-  function clearTableRefinements() {
-    setStageFilter('all');
-    setQuery('');
-  }
-
   return (
     <StaffShell>
       <main className={clsx('py-6', STAFF_CONTAINER)}>
@@ -281,7 +257,7 @@ export default function StaffDashboardPage() {
 
         <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Case queue controls</h3>
                 <p className="text-xs text-slate-500">
@@ -292,15 +268,6 @@ export default function StaffDashboardPage() {
                   </span>
                 </p>
               </div>
-              {hasTableRefinements && (
-                <button
-                  type="button"
-                  onClick={clearTableRefinements}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-[#3399e6] hover:text-[#1a66cc]"
-                >
-                  Clear search and stage filters
-                </button>
-              )}
             </div>
 
             <div className="max-w-xl">

@@ -333,7 +333,7 @@ const AMELIA_ANSWERS: AmeliaAnswer[] = [
     id: 'evaluation-steps',
     keywords: ['steps', 'evaluation', 'process', 'what happens', 'stages', 'workflow'],
     answer:
-      "There are 5 high-level steps: (1) referral from your dialysis clinic or self-referral, (2) intake and consent forms, (3) a screening review by our front desk, (4) evaluations with specialists — cardiology, nephrology, social work, and others, and (5) a listing decision by the transplant committee.",
+      "Your referral moves through onboarding, initial to-dos, initial screening, financial screening, records and clinical review, final decision, education, and scheduling. Your portal will show what you need to do next, and your care team will message you when a staff-owned step is moving forward.",
   },
 ];
 
@@ -765,23 +765,17 @@ export default function MobilePrototypePage() {
   const pendingTodos = useMemo(() => todos.filter((todo) => todo.status === 'pending'), [todos]);
   const completedTodos = useMemo(() => todos.filter((todo) => todo.status === 'completed'), [todos]);
 
-  // Once the patient finishes the initial todos (uploads, questionnaire,
-  // emergency contact, etc.), drop the Education video into their list as a
-  // normal pending todo. We only fire this when they've actually done some
-  // work — i.e. there is at least one completed todo and zero pending todos —
-  // and only if education hasn't already been added.
+  // Education is a later workflow stage. Initial intake tasks move the case
+  // forward for staff review; the education video only appears once staff has
+  // advanced the patient to Education.
   useEffect(() => {
     if (!hasHydrated) return;
     if (onboardingStep !== 'app') return;
     if (!currentPatient) return;
+    if (currentPatient.stage !== 'education') return;
     const hasEducation = currentPatient.todos.some((t) => t.type === 'watch-education-video');
     if (hasEducation) return;
-    const nonEducationTodos = currentPatient.todos.filter((t) => t.type !== 'watch-education-video');
-    if (nonEducationTodos.length === 0) return;
-    const allDone = nonEducationTodos.every((t) => t.status === 'completed');
-    if (allDone) {
-      addEducationTodoAction(currentPatient.id);
-    }
+    addEducationTodoAction(currentPatient.id);
   }, [hasHydrated, onboardingStep, currentPatient, addEducationTodoAction]);
 
   function deriveDisplayName(value: string) {
@@ -2538,8 +2532,8 @@ function EducationTaskCard({
       </div>
 
       <p className="text-xs leading-relaxed text-slate-600">
-        This orientation covers the 5 stages of transplant evaluation, what to expect at your first
-        visit, and how your care team stays in touch throughout the process.
+        This orientation covers the transplant evaluation journey, what to expect at your first
+        visit, and how your care team stays in touch from screening through scheduling.
       </p>
 
       <button

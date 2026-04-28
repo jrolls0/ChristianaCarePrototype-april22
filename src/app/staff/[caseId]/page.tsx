@@ -34,29 +34,8 @@ import { ThreadMessage } from '@/components/ui/ThreadMessage';
 import { AttachButton, AttachmentChips } from '@/components/ui/AttachmentRow';
 import { appendAttachmentSummary, type Attachment } from '@/lib/attachments';
 import { useStore } from '@/lib/store';
-import type { Patient, PatientStage, ThreadKey, Todo } from '@/lib/types';
-
-const STAGE_FLOW: PatientStage[] = [
-  'new-referral',
-  'patient-onboarding',
-  'initial-todos',
-  'front-desk-review',
-  'screening',
-  'records-collection',
-  'specialist-review',
-  'scheduled',
-];
-
-const STAGE_LABEL: Record<PatientStage, string> = {
-  'new-referral': 'New Referral',
-  'patient-onboarding': 'Patient Onboarding',
-  'initial-todos': 'Initial To-Dos',
-  'front-desk-review': 'Front Desk Review',
-  screening: 'Screening',
-  'records-collection': 'Records Collection',
-  'specialist-review': 'Specialist Review',
-  scheduled: 'Scheduled',
-};
+import { PATIENT_STAGE_LABEL, getNextPatientStage } from '@/lib/stages';
+import type { Patient, ThreadKey, Todo } from '@/lib/types';
 
 const TODO_TEMPLATES = [
   'Upload additional documentation',
@@ -287,11 +266,7 @@ export default function StaffCaseDetailPage() {
     ? Math.round((completedCount / patient.todos.length) * 100)
     : 0;
 
-  const nextStage = (() => {
-    const idx = STAGE_FLOW.indexOf(patient.stage);
-    if (idx === -1 || idx === STAGE_FLOW.length - 1) return null;
-    return STAGE_FLOW[idx + 1];
-  })();
+  const nextStage = getNextPatientStage(patient.stage);
 
   const nonSystemMsgCount = patient.messages.filter(
     (m) => m.fromName !== 'ChristianaCare System'
@@ -707,7 +682,7 @@ export default function StaffCaseDetailPage() {
                 </span>
                 {nextStage ? (
                   <span className="inline-flex items-center gap-1 text-xs text-white/80">
-                    → {STAGE_LABEL[nextStage]}
+                    → {PATIENT_STAGE_LABEL[nextStage]}
                   </span>
                 ) : (
                   <span className="text-xs text-white/80">Final stage</span>

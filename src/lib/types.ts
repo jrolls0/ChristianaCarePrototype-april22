@@ -1,12 +1,13 @@
 export type PatientStage =
   | 'new-referral'
-  | 'patient-onboarding'
+  | 'onboarding'
   | 'initial-todos'
-  | 'front-desk-review'
-  | 'screening'
-  | 'records-collection'
-  | 'specialist-review'
-  | 'scheduled';
+  | 'initial-screening'
+  | 'financial-screening'
+  | 'records-clinical-review'
+  | 'final-decision'
+  | 'education'
+  | 'scheduling';
 
 export type TodoType =
   | 'sign-roi-services'
