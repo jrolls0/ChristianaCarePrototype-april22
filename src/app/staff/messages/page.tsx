@@ -124,8 +124,8 @@ function MessagesInner() {
     return source.filter((c) => {
       const name = `${c.patient.firstName} ${c.patient.lastName}`.toLowerCase();
       if (name.includes(q)) return true;
-      if (c.patient.referringClinic.toLowerCase().includes(q)) return true;
-      if (c.patient.duswName.toLowerCase().includes(q)) return true;
+      if (c.patient.referringClinic?.toLowerCase().includes(q)) return true;
+      if (c.patient.duswName?.toLowerCase().includes(q)) return true;
       return c.messages.some((m) => m.body.toLowerCase().includes(q));
     });
   }, [filter, allConvos, patientConvos, clinicConvos, query]);
@@ -322,13 +322,15 @@ function MessagesInner() {
                               {c.tab === 'clinic' ? (
                                 <>
                                   <Building2 className="h-3 w-3 text-violet-500" />
-                                  <span className="truncate">{c.patient.referringClinic}</span>
+                                  <span className="truncate">
+                                    {c.patient.referringClinic ?? 'Self-registered'}
+                                  </span>
                                 </>
                               ) : (
                                 <>
                                   <MessageSquare className="h-3 w-3 text-[#3399e6]" />
                                   <span className="truncate">
-                                    Patient · {c.patient.referringClinic}
+                                    Patient · {c.patient.referringClinic ?? 'Self-registered'}
                                   </span>
                                 </>
                               )}
@@ -384,8 +386,8 @@ function MessagesInner() {
                       </div>
                       <p className="text-xs text-slate-500">
                         {selected.tab === 'clinic'
-                          ? `${selected.patient.referringClinic} · ${selected.patient.duswName}`
-                          : `Patient · ${selected.patient.referringClinic}`}
+                          ? `${selected.patient.referringClinic ?? 'Self-registered'}${selected.patient.duswName ? ` · ${selected.patient.duswName}` : ''}`
+                          : `Patient · ${selected.patient.referringClinic ?? 'Self-registered'}`}
                       </p>
                     </div>
                   </div>
@@ -431,7 +433,7 @@ function MessagesInner() {
                       placeholder={
                         selected.tab === 'patient'
                           ? `Reply to ${selected.patient.firstName}…`
-                          : `Reply to ${selected.patient.referringClinic}…`
+                          : `Reply to ${selected.patient.referringClinic ?? 'the clinic'}…`
                       }
                       className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
                     />
@@ -617,14 +619,14 @@ function ComposeModal({
               {patients.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.firstName} {p.lastName}
-                  {tab === 'clinic' ? ` · ${p.referringClinic}` : ''}
+                  {tab === 'clinic' ? ` · ${p.referringClinic ?? 'Self-registered'}` : ''}
                 </option>
               ))}
             </select>
             {selected && tab === 'clinic' && (
               <p className="text-[11px] text-slate-500">
                 Goes to the clinic thread for {selected.firstName} {selected.lastName} at{' '}
-                {selected.referringClinic}.
+                {selected.referringClinic ?? 'their clinic'}.
               </p>
             )}
           </label>

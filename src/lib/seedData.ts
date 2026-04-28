@@ -205,6 +205,7 @@ const buildJack = (): Patient => {
     phone: '(302) 555-0142',
     dob: '1973-09-14',
     preferredLanguage: 'English',
+    referralSource: 'clinic',
     referringClinic: RIVERSIDE,
     referringClinician: RIVERSIDE_NEPH.name,
     duswName: RIVERSIDE_DUSW.name,
@@ -232,6 +233,7 @@ const buildMaria = (): Patient => {
     phone: '(302) 555-0186',
     dob: '1967-03-22',
     preferredLanguage: 'English',
+    referralSource: 'clinic',
     referringClinic: RIVERSIDE,
     referringClinician: RIVERSIDE_NEPH.name,
     duswName: RIVERSIDE_DUSW.name,
@@ -320,6 +322,7 @@ const buildRobert = (): Patient => {
     phone: '(302) 555-0218',
     dob: '1961-11-05',
     preferredLanguage: 'English',
+    referralSource: 'clinic',
     referringClinic: WILMINGTON,
     referringClinician: WILMINGTON_NEPH.name,
     duswName: WILMINGTON_DUSW.name,
@@ -410,6 +413,7 @@ const buildLinda = (): Patient => {
     phone: '(302) 555-0301',
     dob: '1970-07-19',
     preferredLanguage: 'Spanish',
+    referralSource: 'clinic',
     referringClinic: RIVERSIDE,
     referringClinician: RIVERSIDE_NEPH.name,
     duswName: RIVERSIDE_DUSW.name,
@@ -477,6 +481,7 @@ const buildJames = (): Patient => {
     phone: '(302) 555-0412',
     dob: '1979-02-08',
     preferredLanguage: 'English',
+    referralSource: 'clinic',
     referringClinic: BRANDYWINE,
     referringClinician: BRANDYWINE_NEPH.name,
     duswName: BRANDYWINE_DUSW.name,
@@ -545,6 +550,7 @@ const buildPatricia = (): Patient => {
     phone: '(302) 555-0509',
     dob: '1958-12-30',
     preferredLanguage: 'English',
+    referralSource: 'clinic',
     referringClinic: RIVERSIDE,
     referringClinician: RIVERSIDE_NEPH.name,
     duswName: RIVERSIDE_DUSW.name,
@@ -602,6 +608,7 @@ const buildDavid = (): Patient => {
     phone: '(302) 555-0631',
     dob: '1956-04-17',
     preferredLanguage: 'English',
+    referralSource: 'clinic',
     referringClinic: RIVERSIDE,
     referringClinician: RIVERSIDE_NEPH.name,
     duswName: RIVERSIDE_DUSW.name,
@@ -659,6 +666,44 @@ const buildDavid = (): Patient => {
   };
 };
 
+const buildRobertHayes = (): Patient => {
+  const id = 'patient-robert-hayes';
+  return {
+    id,
+    firstName: 'Robert',
+    lastName: 'Hayes',
+    email: 'robert.hayes@email.com',
+    phone: '(302) 555-0317',
+    dob: '1969-11-08',
+    preferredLanguage: 'English',
+    referralSource: 'self',
+    referralDate: daysAgoIso(2),
+    stage: 'patient-onboarding',
+    daysInStage: 2,
+    isStuck: false,
+    todos: [
+      GOV_ID(id, 'pending'),
+      INSURANCE(id, 'pending'),
+      HEALTH_Q(id, 'pending'),
+    ],
+    messages: [
+      buildMessage({
+        patientId: id,
+        slug: 'self-register',
+        threadKey: 'tc-frontdesk',
+        fromRole: 'staff',
+        fromName: 'ChristianaCare System',
+        body: 'Self-registered through the patient portal — needs follow-up to capture clinical info.',
+        hoursAgo: 2 * 24,
+        readByPatient: true,
+        readByStaff: false,
+      }),
+    ],
+    documents: [],
+    lastActivityAt: daysAgoIso(2),
+  };
+};
+
 const INITIAL_CLINIC_USER: ClinicUser = {
   name: RIVERSIDE_DUSW.name,
   clinicName: RIVERSIDE,
@@ -682,6 +727,7 @@ export const createInitialState = (): InitialState => ({
     buildPatricia(),
     buildDavid(),
     buildJack(),
+    buildRobertHayes(),
   ],
   currentPatientId: null,
   currentStaffName: STAFF_NAME,

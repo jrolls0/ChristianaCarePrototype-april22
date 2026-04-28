@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowRight,
+  Building2,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -14,6 +15,7 @@ import {
   Sparkles,
   Stethoscope,
   Upload,
+  UserPlus,
   Users,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -24,9 +26,13 @@ import { useStore } from '@/lib/store';
 import { useInboxUnread } from '@/lib/inbox';
 import type { Patient } from '@/lib/types';
 
-type KpiKey = 'all' | 'stuck' | 'new';
+type KpiKey = 'all' | 'stuck' | 'new' | 'self-signups';
 type StageKey = 'onboarding' | 'screening' | 'records' | 'specialists';
 type FilterKey = KpiKey | StageKey;
+
+function isSelfSignupNeedingFollowup(p: Patient): boolean {
+  return p.referralSource === 'self' && !p.referringClinic;
+}
 
 const STAGE_FILTERS: { key: StageKey; label: string }[] = [
   { key: 'onboarding', label: 'Onboarding' },
@@ -45,6 +51,8 @@ function matchesFilter(patient: Patient, filter: FilterKey, now: number): boolea
       const days = (now - new Date(patient.referralDate).getTime()) / 86400000;
       return days <= 7;
     }
+    case 'self-signups':
+      return isSelfSignupNeedingFollowup(patient);
     case 'onboarding':
       return patient.stage === 'patient-onboarding' || patient.stage === 'initial-todos';
     case 'screening':
@@ -124,6 +132,34 @@ function ActivityDot({ kind }: { kind: ActivityKind }) {
   return <Icon className={`h-3.5 w-3.5 ${tone}`} />;
 }
 
+function SourceCell({ patient }: { patient: Patient }) {
+  if (patient.referralSource === 'self') {
+    const noFollowup = !patient.referringClinic;
+    return (
+      <span
+        className={clsx(
+          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset',
+          noFollowup
+            ? 'bg-amber-50 text-amber-800 ring-amber-200'
+            : 'bg-violet-50 text-violet-700 ring-violet-200'
+        )}
+      >
+        <UserPlus className="h-3 w-3" />
+        Self-signup
+        <span className="text-slate-500 font-normal">
+          · {noFollowup ? 'needs follow-up' : patient.referringClinic}
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm text-slate-700">
+      <Building2 className="h-3.5 w-3.5 text-slate-400" />
+      {patient.referringClinic ?? '—'}
+    </span>
+  );
+}
+
 export default function StaffDashboardPage() {
   const allPatients = useStore((s) => s.patients);
   const router = useRouter();
@@ -137,7 +173,7 @@ export default function StaffDashboardPage() {
     [allPatients]
   );
 
-  const { activeCases, stuckCount, newThisWeek, unreadMessages } = useMemo(
+  const { activeCases, stuckCount, newThisWeek, unreadMessages, selfSignupsCount } = useMemo(
     () => ({
       activeCases: patients.length,
       stuckCount: patients.filter((p) => p.isStuck).length,
@@ -146,6 +182,7 @@ export default function StaffDashboardPage() {
         return days <= 7;
       }).length,
       unreadMessages: inboxTotal,
+      selfSignupsCount: patients.filter(isSelfSignupNeedingFollowup).length,
     }),
     [patients, now, inboxTotal]
   );
@@ -154,6 +191,10 @@ export default function StaffDashboardPage() {
     const copy = patients.filter((p) => matchesFilter(p, filter, now));
     return copy.sort((a, b) => {
       if (a.isStuck !== b.isStuck) return a.isStuck ? -1 : 1;
+      // Clinic referrals come before self-signups.
+      const aClinic = a.referralSource === 'clinic';
+      const bClinic = b.referralSource === 'clinic';
+      if (aClinic !== bClinic) return aClinic ? -1 : 1;
       return b.daysInStage - a.daysInStage;
     });
   }, [patients, filter, now]);
@@ -186,7 +227,7 @@ export default function StaffDashboardPage() {
         </div>
 
         {/* KPI strip */}
-        <section className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <QuietKpi
             label="Active Cases"
             value={activeCases}
@@ -210,6 +251,15 @@ export default function StaffDashboardPage() {
             caption="Referred in last 7 days"
             active={filter === 'new'}
             onClick={() => setFilter('new')}
+          />
+
+          <QuietKpi
+            label="Self-signups"
+            value={selfSignupsCount}
+            icon={UserPlus}
+            caption="Needs follow-up"
+            active={filter === 'self-signups'}
+            onClick={() => setFilter('self-signups')}
           />
 
           <UnreadKpi count={unreadMessages} />
@@ -265,7 +315,7 @@ export default function StaffDashboardPage() {
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-5 py-3 text-left font-semibold">Patient</th>
-                <th className="px-4 py-3 text-left font-semibold">Referring Clinic</th>
+                <th className="px-4 py-3 text-left font-semibold">Source</th>
                 <th className="px-4 py-3 text-left font-semibold">Stage</th>
                 <th className="px-4 py-3 text-left font-semibold">Days in Stage</th>
                 <th className="px-4 py-3 text-left font-semibold">Last Activity</th>
@@ -313,15 +363,15 @@ export default function StaffDashboardPage() {
                           </div>
                           <div className="flex items-center gap-1.5 text-xs text-slate-500">
                             <Stethoscope className="h-3 w-3 text-slate-400" />
-                            {p.nephrologistName}
+                            {p.nephrologistName ?? 'No nephrologist on file'}
                             <span className="text-slate-300">·</span>
                             <span>{p.preferredLanguage}</span>
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-4 text-slate-700">
-                      {p.referringClinic}
+                    <td className="px-4 py-4">
+                      <SourceCell patient={p} />
                     </td>
                     <td className="px-4 py-4">
                       <StatusPill stage={p.stage} />

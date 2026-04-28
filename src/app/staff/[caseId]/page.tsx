@@ -103,8 +103,16 @@ function buildActivity(patient: Patient): ActivityEvent[] {
   events.push({
     id: `referral-${patient.id}`,
     at: patient.referralDate,
-    label: 'Referral received',
-    detail: `from ${patient.referringClinic}`,
+    label:
+      patient.referralSource === 'self'
+        ? 'Patient self-registered'
+        : 'Referral received',
+    detail:
+      patient.referralSource === 'self'
+        ? patient.referringClinic
+          ? `via portal · ${patient.referringClinic}`
+          : 'via patient portal'
+        : `from ${patient.referringClinic}`,
     icon: Sparkles,
     tone: 'violet',
   });
@@ -226,6 +234,10 @@ export default function StaffCaseDetailPage() {
 
   useEffect(() => {
     if (!patient) return;
+    if (activeTab === 'clinic' && !patient.referringClinic) {
+      setActiveTab('patient');
+      return;
+    }
     const threadKey = MSG_THREAD[activeTab];
     const thread = activeTab === 'patient' ? patientThread : clinicThread;
     if (thread.some((m) => m.fromRole !== 'staff' && !m.readByStaff)) {
@@ -333,9 +345,28 @@ export default function StaffCaseDetailPage() {
                   {patient.isStuck && <StuckBadge days={patient.daysInStage} />}
                 </div>
                 <p className="mt-0.5 text-sm text-slate-500">
-                  Referred {relativeTime(patient.referralDate)} by {patient.referringClinician}
-                  {' · '}
-                  <span className="text-slate-600">{patient.referringClinic}</span>
+                  {patient.referralSource === 'self' ? (
+                    <>
+                      Self-registered {relativeTime(patient.referralDate)}
+                      {patient.referringClinic && (
+                        <>
+                          {' · '}
+                          <span className="text-slate-600">{patient.referringClinic}</span>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      Referred {relativeTime(patient.referralDate)}
+                      {patient.referringClinician && <> by {patient.referringClinician}</>}
+                      {patient.referringClinic && (
+                        <>
+                          {' · '}
+                          <span className="text-slate-600">{patient.referringClinic}</span>
+                        </>
+                      )}
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -512,13 +543,15 @@ export default function StaffCaseDetailPage() {
                   icon={<MessageSquare className="h-3.5 w-3.5" />}
                   label="Patient"
                 />
-                <MsgTabButton
-                  active={activeTab === 'clinic'}
-                  unread={clinicUnread}
-                  onClick={() => setActiveTab('clinic')}
-                  icon={<Building2 className="h-3.5 w-3.5" />}
-                  label="Clinic"
-                />
+                {patient.referringClinic && (
+                  <MsgTabButton
+                    active={activeTab === 'clinic'}
+                    unread={clinicUnread}
+                    onClick={() => setActiveTab('clinic')}
+                    icon={<Building2 className="h-3.5 w-3.5" />}
+                    label="Clinic"
+                  />
+                )}
               </div>
               <div
                 ref={scrollRef}
@@ -532,7 +565,7 @@ export default function StaffCaseDetailPage() {
                     <p className="mt-2 text-sm text-slate-600">
                       {activeTab === 'patient'
                         ? 'No messages with the patient yet.'
-                        : `No messages with ${patient.referringClinic} yet.`}
+                        : `No messages with ${patient.referringClinic ?? 'the clinic'} yet.`}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500">
                       Start the conversation below.
@@ -566,7 +599,7 @@ export default function StaffCaseDetailPage() {
                     placeholder={
                       activeTab === 'patient'
                         ? `Reply to ${patient.firstName}…`
-                        : `Reply to ${patient.referringClinic}…`
+                        : `Reply to ${patient.referringClinic ?? 'the clinic'}…`
                     }
                     className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
                   />
@@ -605,20 +638,37 @@ export default function StaffCaseDetailPage() {
                 >
                   {patient.preferredLanguage}
                 </InfoRow>
-                <InfoRow
-                  icon={<Building2 className="h-3.5 w-3.5" />}
-                  label="Clinic"
-                >
-                  {patient.referringClinic}
-                </InfoRow>
-                <InfoRow label="DUSW">{patient.duswName}</InfoRow>
-                <InfoRow
-                  icon={<Stethoscope className="h-3.5 w-3.5" />}
-                  label="Nephrologist"
-                >
-                  {patient.nephrologistName}
-                </InfoRow>
+                {patient.referringClinic && (
+                  <InfoRow
+                    icon={<Building2 className="h-3.5 w-3.5" />}
+                    label="Clinic"
+                  >
+                    {patient.referringClinic}
+                  </InfoRow>
+                )}
+                {patient.duswName && (
+                  <InfoRow label="DUSW">{patient.duswName}</InfoRow>
+                )}
+                {patient.nephrologistName && (
+                  <InfoRow
+                    icon={<Stethoscope className="h-3.5 w-3.5" />}
+                    label="Nephrologist"
+                  >
+                    {patient.nephrologistName}
+                  </InfoRow>
+                )}
               </dl>
+              {patient.referralSource === 'self' &&
+                !patient.referringClinic &&
+                !patient.duswName &&
+                !patient.nephrologistName && (
+                  <div className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50/80 p-3 text-xs text-amber-800 ring-1 ring-amber-100">
+                    <UserPlus className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Self-registered — clinical info pending. Reach out to capture clinic, social worker, and nephrologist details.
+                    </span>
+                  </div>
+                )}
               <div className="mt-4 border-t border-slate-100 pt-4">
                 {patient.emergencyContact ? (
                   <div className="rounded-xl bg-emerald-50/60 p-3 ring-1 ring-emerald-100">

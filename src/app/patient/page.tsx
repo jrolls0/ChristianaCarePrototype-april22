@@ -48,6 +48,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useStore } from '../../lib/store';
+import { CLINIC_NAMES, findClinic } from '../../lib/clinicDirectory';
 import type {
   DocumentRequest as StoreDocumentRequest,
   Patient as StorePatient,
@@ -130,6 +131,16 @@ type QuickHelpChipData = {
 type RegistrationPayload = {
   displayName: string;
   email: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  dob?: string;
+  preferredLanguage?: 'English' | 'Spanish';
+  referringClinic?: string;
+  duswName?: string;
+  duswEmail?: string;
+  nephrologistName?: string;
+  nephrologistEmail?: string;
 };
 
 type CarePartnerInvitePayload = {
@@ -448,42 +459,7 @@ const INITIAL_CARE_THREADS: CareThread[] = [
 ];
 
 const TITLE_OPTIONS = ['', 'Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Prof.'];
-const DIALYSIS_CLINICS = [
-  '',
-  'Metro Health Dialysis Center',
-  'Lakeside Renal Unit',
-  'Grand River Kidney Care',
-  'University Hospital Dialysis',
-  'Community Dialysis Center',
-  'Regional Kidney Care',
-];
-
-const SOCIAL_WORKERS_BY_CLINIC: Record<string, SocialWorker[]> = {
-  'Metro Health Dialysis Center': [
-    { id: 'sw-metro-1', fullName: 'Sarah Johnson' },
-    { id: 'sw-metro-2', fullName: 'Alex Rivera' },
-  ],
-  'Lakeside Renal Unit': [
-    { id: 'sw-lake-1', fullName: 'Jamie Lee' },
-    { id: 'sw-lake-2', fullName: 'Morgan Patel' },
-  ],
-  'Grand River Kidney Care': [
-    { id: 'sw-grand-1', fullName: 'Taylor Brooks' },
-    { id: 'sw-grand-2', fullName: 'Jordan Kim' },
-  ],
-  'University Hospital Dialysis': [
-    { id: 'sw-uh-1', fullName: 'Avery Thomas' },
-    { id: 'sw-uh-2', fullName: 'Casey Nguyen' },
-  ],
-  'Community Dialysis Center': [
-    { id: 'sw-community-1', fullName: 'Riley Martinez' },
-    { id: 'sw-community-2', fullName: 'Drew Campbell' },
-  ],
-  'Regional Kidney Care': [
-    { id: 'sw-regional-1', fullName: 'Quinn Harris' },
-    { id: 'sw-regional-2', fullName: 'Logan Foster' },
-  ],
-};
+const DIALYSIS_CLINICS: string[] = ['', ...CLINIC_NAMES];
 
 const SERVICES_CONSENT_SECTIONS: ConsentSectionData[] = [
   {
@@ -670,6 +646,7 @@ export default function MobilePrototypePage() {
   const addEducationTodoAction = useStore((s) => s.addEducationTodo);
   const ensureInitialTodosAction = useStore((s) => s.ensureInitialTodos);
   const setCurrentPatientAction = useStore((s) => s.setCurrentPatient);
+  const registerSelfAction = useStore((s) => s.registerSelf);
   const hasCompletedOnboarding = useStore((s) => s.hasCompletedOnboarding);
   const markOnboardingCompleteAction = useStore((s) => s.markOnboardingComplete);
   const setLastPatientTabAction = useStore((s) => s.setLastPatientTab);
@@ -812,6 +789,20 @@ export default function MobilePrototypePage() {
   }
 
   function handleRegistrationComplete(payload: RegistrationPayload) {
+    const newPatientId = registerSelfAction({
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      email: payload.email,
+      phone: payload.phone,
+      dob: payload.dob,
+      preferredLanguage: payload.preferredLanguage,
+      referringClinic: payload.referringClinic,
+      duswName: payload.duswName,
+      duswEmail: payload.duswEmail,
+      nephrologistName: payload.nephrologistName,
+      nephrologistEmail: payload.nephrologistEmail,
+    });
+    setCurrentPatientAction(newPatientId);
     setRegisteredDisplayName(payload.displayName);
     setRegisteredEmail(payload.email);
     setUsername(payload.email);
@@ -1228,6 +1219,7 @@ function RegistrationScreen({
   onCreateAccount: (payload: RegistrationPayload) => void;
   prefilledEmail: string;
 }) {
+  const findPatientByEmail = useStore((s) => s.findPatientByEmail);
   const [selectedTitleIndex, setSelectedTitleIndex] = useState(0);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -1237,9 +1229,9 @@ function RegistrationScreen({
   const [address, setAddress] = useState('');
   const [primaryCarePhysician, setPrimaryCarePhysician] = useState('');
   const [insuranceProvider, setInsuranceProvider] = useState('');
-  const [nephrologist, setNephrologist] = useState('');
   const [selectedDialysisClinic, setSelectedDialysisClinic] = useState(0);
   const [selectedSocialWorker, setSelectedSocialWorker] = useState(0);
+  const [selectedNephrologist, setSelectedNephrologist] = useState(0);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<RegistrationErrors>({});
@@ -1247,9 +1239,45 @@ function RegistrationScreen({
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [matchedReferral, setMatchedReferral] = useState<StorePatient | null>(null);
 
   const selectedClinicName = DIALYSIS_CLINICS[selectedDialysisClinic] ?? '';
-  const availableWorkers = selectedClinicName ? SOCIAL_WORKERS_BY_CLINIC[selectedClinicName] ?? [] : [];
+  const selectedClinicEntry = findClinic(selectedClinicName);
+  const availableWorkers = selectedClinicEntry?.socialWorkers ?? [];
+  const availableNephrologists = selectedClinicEntry?.nephrologists ?? [];
+
+  function isValidEmailLocal(value: string) {
+    return /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value);
+  }
+
+  // Detect existing clinic referral by email and prefill associated fields.
+  useEffect(() => {
+    const trimmed = email.trim();
+    if (!isValidEmailLocal(trimmed)) {
+      setMatchedReferral(null);
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      const found = findPatientByEmail(trimmed);
+      if (found && found.referralSource === 'clinic') {
+        setMatchedReferral(found);
+      } else {
+        setMatchedReferral(null);
+      }
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [email, findPatientByEmail]);
+
+  useEffect(() => {
+    if (!matchedReferral) return;
+    if (!firstName.trim() && matchedReferral.firstName) setFirstName(matchedReferral.firstName);
+    if (!lastName.trim() && matchedReferral.lastName) setLastName(matchedReferral.lastName);
+    if (matchedReferral.referringClinic) {
+      const idx = DIALYSIS_CLINICS.indexOf(matchedReferral.referringClinic);
+      if (idx > 0) setSelectedDialysisClinic(idx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchedReferral]);
 
   const passwordChecks = {
     minLength: password.length >= 8,
@@ -1259,10 +1287,6 @@ function RegistrationScreen({
     symbol: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
   };
 
-  function isValidEmail(value: string) {
-    return /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value);
-  }
-
   function validateForm() {
     const errors: RegistrationErrors = {};
 
@@ -1270,7 +1294,7 @@ function RegistrationScreen({
     if (!lastName.trim()) errors.lastName = 'Last name is required';
     if (!email.trim()) {
       errors.email = 'Email address is required';
-    } else if (!isValidEmail(email.trim())) {
+    } else if (!isValidEmailLocal(email.trim())) {
       errors.email = 'Please enter a valid email address';
     }
     if (!password) {
@@ -1280,12 +1304,6 @@ function RegistrationScreen({
     }
     if (confirmPassword !== password) {
       errors.confirmPassword = 'Passwords do not match';
-    }
-    if (selectedDialysisClinic === 0) {
-      errors.dialysisClinic = 'Please select your dialysis clinic';
-    }
-    if (selectedDialysisClinic > 0 && selectedSocialWorker === 0) {
-      errors.socialWorker = 'Please select your assigned social worker';
     }
 
     setFieldErrors(errors);
@@ -1305,9 +1323,47 @@ function RegistrationScreen({
     window.setTimeout(() => {
       const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
       setIsLoading(false);
+
+      // Resolve clinic-related selections (or use the matched referral's data).
+      let clinicName: string | undefined;
+      let duswName: string | undefined;
+      let duswEmail: string | undefined;
+      let nephName: string | undefined;
+      let nephEmail: string | undefined;
+
+      if (matchedReferral) {
+        clinicName = matchedReferral.referringClinic;
+        duswName = matchedReferral.duswName;
+        duswEmail = matchedReferral.duswEmail;
+        nephName = matchedReferral.nephrologistName;
+        nephEmail = matchedReferral.nephrologistEmail;
+      } else if (selectedClinicEntry) {
+        clinicName = selectedClinicEntry.name;
+        const sw = availableWorkers[selectedSocialWorker - 1];
+        if (sw) {
+          duswName = sw.name;
+          duswEmail = sw.email;
+        }
+        const neph = availableNephrologists[selectedNephrologist - 1];
+        if (neph) {
+          nephName = neph.name;
+          nephEmail = neph.email;
+        }
+      }
+
       onCreateAccount({
         displayName: fullName || 'Jeremy Rolls',
         email: email.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phoneNumber.trim() || undefined,
+        dob: dateOfBirth || undefined,
+        preferredLanguage: 'English',
+        referringClinic: clinicName,
+        duswName,
+        duswEmail,
+        nephrologistName: nephName,
+        nephrologistEmail: nephEmail,
       });
     }, 700);
   }
@@ -1407,49 +1463,99 @@ function RegistrationScreen({
               onChange={setInsuranceProvider}
               placeholder="Blue Cross Blue Shield"
             />
-            <RegistrationInput
-              label="Nephrologist"
-              value={nephrologist}
-              onChange={setNephrologist}
-              placeholder="Dr. Jane Doe"
-            />
+            {matchedReferral ? (
+              <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                  <div className="text-xs text-emerald-900">
+                    <p className="font-semibold">
+                      We found a referral from {matchedReferral.referringClinic ?? 'your clinic'}.
+                    </p>
+                    <p className="mt-0.5 text-emerald-800">
+                      We&apos;ll attach your account to that referral.
+                    </p>
+                  </div>
+                </div>
+                <dl className="space-y-1 rounded-lg bg-white/70 px-3 py-2 text-xs text-emerald-900">
+                  {matchedReferral.referringClinic && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="font-medium text-emerald-800">Clinic</dt>
+                      <dd className="text-right">{matchedReferral.referringClinic}</dd>
+                    </div>
+                  )}
+                  {matchedReferral.duswName && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="font-medium text-emerald-800">Social Worker</dt>
+                      <dd className="text-right">{matchedReferral.duswName}</dd>
+                    </div>
+                  )}
+                  {matchedReferral.nephrologistName && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="font-medium text-emerald-800">Nephrologist</dt>
+                      <dd className="text-right">{matchedReferral.nephrologistName}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            ) : (
+              <>
+                <label className="block space-y-1.5">
+                  <span className="text-sm font-medium text-slate-700">Dialysis Clinic</span>
+                  <select
+                    value={selectedDialysisClinic}
+                    onChange={(event) => {
+                      setSelectedDialysisClinic(Number(event.target.value));
+                      setSelectedSocialWorker(0);
+                      setSelectedNephrologist(0);
+                    }}
+                    className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+                  >
+                    {DIALYSIS_CLINICS.map((clinic, index) => (
+                      <option key={`${clinic}-${index}`} value={index}>
+                        {clinic || 'Not currently on dialysis (optional)'}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-500">
+                    If you&apos;re not currently on dialysis, leave this blank — we&apos;ll follow up by phone.
+                  </p>
+                </label>
 
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-slate-700">Dialysis Clinic *</span>
-              <select
-                value={selectedDialysisClinic}
-                onChange={(event) => {
-                  setSelectedDialysisClinic(Number(event.target.value));
-                  setSelectedSocialWorker(0);
-                }}
-                className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
-              >
-                {DIALYSIS_CLINICS.map((clinic, index) => (
-                  <option key={`${clinic}-${index}`} value={index}>
-                    {clinic || 'Select your dialysis clinic'}
-                  </option>
-                ))}
-              </select>
-              <FieldError message={fieldErrors.dialysisClinic} />
-            </label>
-
-            {selectedDialysisClinic > 0 && (
-              <label className="block space-y-1.5">
-                <span className="text-sm font-medium text-slate-700">Assigned Social Worker *</span>
-                <select
-                  value={selectedSocialWorker}
-                  onChange={(event) => setSelectedSocialWorker(Number(event.target.value))}
-                  className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
-                >
-                  <option value={0}>Select your social worker</option>
-                  {availableWorkers.map((worker, index) => (
-                    <option key={worker.id} value={index + 1}>
-                      {worker.fullName}
-                    </option>
-                  ))}
-                </select>
-                <FieldError message={fieldErrors.socialWorker} />
-              </label>
+                {selectedDialysisClinic > 0 && (
+                  <>
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-medium text-slate-700">Assigned Social Worker</span>
+                      <select
+                        value={selectedSocialWorker}
+                        onChange={(event) => setSelectedSocialWorker(Number(event.target.value))}
+                        className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+                      >
+                        <option value={0}>Select your social worker</option>
+                        {availableWorkers.map((worker, index) => (
+                          <option key={worker.id} value={index + 1}>
+                            {worker.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-medium text-slate-700">Nephrologist</span>
+                      <select
+                        value={selectedNephrologist}
+                        onChange={(event) => setSelectedNephrologist(Number(event.target.value))}
+                        className="h-11 w-full rounded-lg bg-[#f0f3f7] px-3 text-sm text-slate-800 outline-none ring-offset-2 focus:ring-2 focus:ring-[#cfe7fd]"
+                      >
+                        <option value={0}>Select your nephrologist</option>
+                        {availableNephrologists.map((neph, index) => (
+                          <option key={neph.id} value={index + 1}>
+                            {neph.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
+              </>
             )}
           </RegistrationSection>
 
@@ -3185,11 +3291,13 @@ function deriveThreadsFromPatient(patient: StorePatient | null): CareThread[] {
       .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
     const participantName =
       key === 'dusw'
-        ? patient.duswName
+        ? patient.duswName ?? 'Dialysis Social Worker'
         : patient.messages.find((m) => m.threadKey === 'tc-frontdesk' && m.fromRole === 'staff')
             ?.fromName ?? 'Sarah Martinez';
     const participantOrganization =
-      key === 'dusw' ? patient.referringClinic : 'ChristianaCare Transplant Center';
+      key === 'dusw'
+        ? patient.referringClinic ?? 'Dialysis Clinic'
+        : 'ChristianaCare Transplant Center';
     const lastMessage = messages[messages.length - 1];
     const unreadCount = messages.filter(
       (m) => !m.readByPatient && m.fromRole !== 'patient'

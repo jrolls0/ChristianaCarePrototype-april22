@@ -126,6 +126,7 @@ export const useStore = create<DemoState>()(
             nephrologistEmail: data.nephrologistEmail,
             referringClinic: data.referringClinic,
             referringClinician: data.nephrologistName,
+            referralSource: 'clinic',
             referralDate: now,
             stage: 'patient-onboarding',
             daysInStage: 0,
@@ -149,6 +150,7 @@ export const useStore = create<DemoState>()(
           phone: data.phone,
           dob: data.dob,
           preferredLanguage: data.preferredLanguage,
+          referralSource: 'clinic',
           referringClinic: data.referringClinic,
           referringClinician: data.nephrologistName,
           duswName: data.duswName,
@@ -178,6 +180,127 @@ export const useStore = create<DemoState>()(
         };
         set({ patients: [...state.patients, newPatient] });
         return newId;
+      },
+
+      registerSelf: (data) => {
+        const state = get();
+        const lookupEmail = data.email.trim().toLowerCase();
+        const match = state.patients.find(
+          (p) => p.email.toLowerCase() === lookupEmail
+        );
+        const now = new Date().toISOString();
+
+        const seededInitialTodos = (patientId: string): Todo[] => [
+          {
+            id: `todo-${patientId}-gov-id`,
+            type: 'upload-government-id',
+            title: 'Upload Government ID',
+            description: "A clear photo of your driver's license or passport.",
+            status: 'pending',
+          },
+          {
+            id: `todo-${patientId}-insurance`,
+            type: 'upload-insurance-card',
+            title: 'Upload Insurance Card',
+            description: 'Front and back of your primary insurance card.',
+            status: 'pending',
+          },
+          {
+            id: `todo-${patientId}-health`,
+            type: 'complete-health-questionnaire',
+            title: 'Complete Health Questionnaire',
+            description: 'A short form about your current health and medical history.',
+            status: 'pending',
+          },
+        ];
+
+        if (match) {
+          // Email matches an existing patient — claim that record.
+          // If they were a 'new-referral' from a clinic, promote and keep the clinic info.
+          const wasNewReferral = match.stage === 'new-referral';
+          const updated: Patient = {
+            ...match,
+            firstName: data.firstName || match.firstName,
+            lastName: data.lastName || match.lastName,
+            phone: data.phone || match.phone,
+            dob: data.dob || match.dob,
+            preferredLanguage:
+              data.preferredLanguage || match.preferredLanguage,
+            stage: wasNewReferral ? 'patient-onboarding' : match.stage,
+            daysInStage: wasNewReferral ? 0 : match.daysInStage,
+            isStuck: wasNewReferral ? false : match.isStuck,
+            lastActivityAt: now,
+            todos:
+              match.todos.length === 0 ? seededInitialTodos(match.id) : match.todos,
+            messages: wasNewReferral
+              ? [
+                  ...match.messages,
+                  {
+                    id: `msg-${match.id}-self-register-${nextIdSuffix()}`,
+                    threadId: `${match.id}-tc-frontdesk`,
+                    threadKey: 'tc-frontdesk',
+                    fromRole: 'staff',
+                    fromName: 'ChristianaCare System',
+                    body: `Patient registered through the portal — referral from ${match.referringClinic ?? 'clinic'} attached.`,
+                    sentAt: now,
+                    readByPatient: true,
+                    readByStaff: false,
+                  },
+                ]
+              : match.messages,
+          };
+          set({ patients: replacePatient(state.patients, updated) });
+          return match.id;
+        }
+
+        const newId = `patient-${nextIdSuffix()}`;
+        const clinicSelected = !!data.referringClinic;
+        const newPatient: Patient = {
+          id: newId,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone ?? '',
+          dob: data.dob ?? '',
+          preferredLanguage: data.preferredLanguage ?? 'English',
+          referralSource: 'self',
+          referringClinic: data.referringClinic,
+          referringClinician: data.nephrologistName,
+          duswName: data.duswName,
+          duswEmail: data.duswEmail,
+          nephrologistName: data.nephrologistName,
+          nephrologistEmail: data.nephrologistEmail,
+          referralDate: now,
+          stage: 'patient-onboarding',
+          daysInStage: 0,
+          isStuck: false,
+          todos: seededInitialTodos(newId),
+          messages: [
+            {
+              id: `msg-${newId}-self-register`,
+              threadId: `${newId}-tc-frontdesk`,
+              threadKey: 'tc-frontdesk',
+              fromRole: 'staff',
+              fromName: 'ChristianaCare System',
+              body: clinicSelected
+                ? `Self-registered through the patient portal. Patient indicated dialysis at ${data.referringClinic}.`
+                : 'Self-registered through the patient portal — needs follow-up to capture clinical info.',
+              sentAt: now,
+              readByPatient: true,
+              readByStaff: false,
+            },
+          ],
+          documents: [],
+          lastActivityAt: now,
+        };
+        set({ patients: [...state.patients, newPatient] });
+        return newId;
+      },
+
+      findPatientByEmail: (email) => {
+        const lookup = email.trim().toLowerCase();
+        if (!lookup) return undefined;
+        return get().patients.find((p) => p.email.toLowerCase() === lookup);
       },
 
       completeTodo: (patientId, todoId) => {
@@ -467,6 +590,12 @@ export const useStore = create<DemoState>()(
         hasCompletedOnboarding: state.hasCompletedOnboarding,
         lastPatientTab: state.lastPatientTab,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        state.patients = state.patients.map((p) =>
+          p.referralSource ? p : { ...p, referralSource: 'clinic' as const }
+        );
+      },
     }
   )
 );

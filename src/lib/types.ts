@@ -69,6 +69,8 @@ export interface EmergencyContact {
   consented: boolean;
 }
 
+export type ReferralSource = 'clinic' | 'self';
+
 export interface Patient {
   id: string;
   firstName: string;
@@ -77,12 +79,13 @@ export interface Patient {
   phone: string;
   dob: string;
   preferredLanguage: 'English' | 'Spanish';
-  referringClinic: string;
-  referringClinician: string;
-  duswName: string;
-  duswEmail: string;
-  nephrologistName: string;
-  nephrologistEmail: string;
+  referralSource: ReferralSource;
+  referringClinic?: string;
+  referringClinician?: string;
+  duswName?: string;
+  duswEmail?: string;
+  nephrologistName?: string;
+  nephrologistEmail?: string;
   referralDate: string;
   stage: PatientStage;
   daysInStage: number;
@@ -109,6 +112,20 @@ export interface ReferralSubmission {
   referringClinic: string;
 }
 
+export interface SelfRegistration {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  dob?: string;
+  preferredLanguage?: 'English' | 'Spanish';
+  referringClinic?: string;
+  duswName?: string;
+  duswEmail?: string;
+  nephrologistName?: string;
+  nephrologistEmail?: string;
+}
+
 export interface ClinicUser {
   name: string;
   clinicName: string;
@@ -125,6 +142,8 @@ export interface DemoState {
   lastPatientTab: PatientTab;
 
   submitReferral: (data: ReferralSubmission) => string;
+  registerSelf: (data: SelfRegistration) => string;
+  findPatientByEmail: (email: string) => Patient | undefined;
   markOnboardingComplete: () => void;
   setLastPatientTab: (tab: PatientTab) => void;
   completeTodo: (patientId: string, todoId: string) => void;
