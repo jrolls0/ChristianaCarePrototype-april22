@@ -159,7 +159,8 @@ type RegistrationErrors = Partial<Record<
   | 'password'
   | 'confirmPassword'
   | 'dialysisClinic'
-  | 'socialWorker',
+  | 'socialWorker'
+  | 'nephrologist',
   string
 >>;
 
@@ -1386,6 +1387,12 @@ function RegistrationScreen({
     } else if (findPatientByEmail(email.trim())?.portalAccount) {
       errors.email = 'An account already exists for this email. Use Sign In with the password you created.';
     }
+    if (selectedDialysisClinic > 0 && selectedSocialWorker === 0) {
+      errors.socialWorker = 'Select your assigned social worker';
+    }
+    if (selectedDialysisClinic > 0 && selectedNephrologist === 0) {
+      errors.nephrologist = 'Select your nephrologist';
+    }
     if (!password) {
       errors.password = 'Password is required';
     } else if (!Object.values(passwordChecks).every(Boolean)) {
@@ -1596,7 +1603,7 @@ function RegistrationScreen({
             ) : (
               <>
                 <label className="block space-y-1.5">
-                  <span className="text-sm font-medium text-slate-700">Dialysis Clinic</span>
+                  <span className="text-sm font-medium text-slate-700">Dialysis Clinic *</span>
                   <select
                     value={selectedDialysisClinic}
                     onChange={(event) => {
@@ -1608,19 +1615,19 @@ function RegistrationScreen({
                   >
                     {DIALYSIS_CLINICS.map((clinic, index) => (
                       <option key={`${clinic}-${index}`} value={index}>
-                        {clinic || 'Not currently on dialysis (optional)'}
+                        {clinic || 'Not currently on dialysis'}
                       </option>
                     ))}
                   </select>
                   <p className="text-[11px] text-slate-500">
-                    If you&apos;re not currently on dialysis, leave this blank — we&apos;ll follow up by phone.
+                    Choose your dialysis clinic, or select Not currently on dialysis.
                   </p>
                 </label>
 
                 {selectedDialysisClinic > 0 && (
                   <>
                     <label className="block space-y-1.5">
-                      <span className="text-sm font-medium text-slate-700">Assigned Social Worker</span>
+                      <span className="text-sm font-medium text-slate-700">Assigned Social Worker *</span>
                       <select
                         value={selectedSocialWorker}
                         onChange={(event) => setSelectedSocialWorker(Number(event.target.value))}
@@ -1633,9 +1640,10 @@ function RegistrationScreen({
                           </option>
                         ))}
                       </select>
+                      <FieldError message={fieldErrors.socialWorker} />
                     </label>
                     <label className="block space-y-1.5">
-                      <span className="text-sm font-medium text-slate-700">Nephrologist</span>
+                      <span className="text-sm font-medium text-slate-700">Nephrologist *</span>
                       <select
                         value={selectedNephrologist}
                         onChange={(event) => setSelectedNephrologist(Number(event.target.value))}
@@ -1648,6 +1656,7 @@ function RegistrationScreen({
                           </option>
                         ))}
                       </select>
+                      <FieldError message={fieldErrors.nephrologist} />
                     </label>
                   </>
                 )}
