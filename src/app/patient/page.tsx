@@ -52,6 +52,7 @@ import { CLINIC_NAMES, findClinic } from '../../lib/clinicDirectory';
 import type {
   DocumentRequest as StoreDocumentRequest,
   Patient as StorePatient,
+  PatientRegistrationResult,
   Todo as StoreTodo,
 } from '../../lib/types';
 import {
@@ -131,6 +132,7 @@ type QuickHelpChipData = {
 type RegistrationPayload = {
   displayName: string;
   email: string;
+  password: string;
   firstName: string;
   lastName: string;
   phone?: string;
@@ -177,6 +179,8 @@ type ConsentSectionData = {
 const PRIMARY = '#3399e6';
 const PRIMARY_DARK = '#1a66cc';
 const SAVED_USERNAME_KEY = 'mobile_prototype_saved_username';
+const DEMO_PATIENT_EMAIL = 'jack.thompson@email.com';
+const DEMO_PATIENT_NAME = 'Jack Thompson';
 const MOCK_TODOS: MockTodo[] = [
   {
     id: 'todo-1',
@@ -647,41 +651,33 @@ export default function MobilePrototypePage() {
   const ensureInitialTodosAction = useStore((s) => s.ensureInitialTodos);
   const setCurrentPatientAction = useStore((s) => s.setCurrentPatient);
   const registerSelfAction = useStore((s) => s.registerSelf);
-  const hasCompletedOnboarding = useStore((s) => s.hasCompletedOnboarding);
+  const authenticatePatientAction = useStore((s) => s.authenticatePatient);
   const markOnboardingCompleteAction = useStore((s) => s.markOnboardingComplete);
   const setLastPatientTabAction = useStore((s) => s.setLastPatientTab);
 
   const currentPatient: StorePatient | null =
-    patients.find((p) => p.id === currentPatientId) ??
-    patients.find((p) => p.id === 'patient-jack') ??
-    null;
-  const patientId = currentPatient?.id ?? 'patient-jack';
+    currentPatientId ? patients.find((p) => p.id === currentPatientId) ?? null : null;
+  const demoPatient = patients.find((p) => p.id === 'patient-jack') ?? null;
+  const patientId = currentPatient?.id ?? '';
 
-  useEffect(() => {
-    if (!currentPatientId && currentPatient) {
-      setCurrentPatientAction(currentPatient.id);
-    }
-  }, [currentPatientId, currentPatient, setCurrentPatientAction]);
-
-  const seededEmail = currentPatient?.email ?? '';
-  const seededDisplayName = currentPatient
-    ? `${currentPatient.firstName} ${currentPatient.lastName}`
-    : 'Jack Thompson';
+  const seededEmail = demoPatient?.email ?? DEMO_PATIENT_EMAIL;
+  const seededDisplayName = demoPatient
+    ? `${demoPatient.firstName} ${demoPatient.lastName}`
+    : DEMO_PATIENT_NAME;
 
   const [rememberedUsername] = useState(() =>
     typeof window === 'undefined' ? '' : (window.localStorage.getItem(SAVED_USERNAME_KEY) ?? '')
   );
-  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>(() =>
-    useStore.getState().hasCompletedOnboarding ? 'app' : 'entry'
-  );
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>('entry');
   const [entryAuthTab, setEntryAuthTab] = useState<EntryAuthTab>('register');
-  const [username, setUsername] = useState(rememberedUsername || seededEmail);
+  const [username, setUsername] = useState(seededEmail);
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(rememberedUsername.length > 0);
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [registeredDisplayName, setRegisteredDisplayName] = useState(seededDisplayName);
-  const [registeredEmail, setRegisteredEmail] = useState(rememberedUsername || seededEmail);
+  const [registeredEmail, setRegisteredEmail] = useState(seededEmail);
   const [justRegistered, setJustRegistered] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
   const [activeTab, setActiveTab] = useState<AppTab>(
     () => useStore.getState().lastPatientTab ?? 'home'
@@ -690,17 +686,52 @@ export default function MobilePrototypePage() {
   const [displayName, setDisplayName] = useState(seededDisplayName);
   const [showCoordinatorIntro, setShowCoordinatorIntro] = useState(false);
 
-  // Once persistence finishes hydrating, sync the onboarding step to the
-  // restored flag. We only want this to fire on hydration completion — not
-  // every time `hasCompletedOnboarding` changes — otherwise sign-out (which
-  // intentionally returns to the login screen while keeping the flag) would
-  // immediately bounce back into the app.
+  // Once persistence finishes hydrating, restore a signed-in patient session
+  // only when that patient has a registered portal account. Otherwise keep the
+  // tester on the register-first entry screen.
   useEffect(() => {
     if (!hasHydrated) return;
     const state = useStore.getState();
-    if (state.hasCompletedOnboarding) {
-      setOnboardingStep((prev) => (prev === 'entry' ? 'app' : prev));
-      setShowCoordinatorIntro(false);
+    const signedInPatient = state.currentPatientId
+      ? state.patients.find((p) => p.id === state.currentPatientId && p.portalAccount)
+      : undefined;
+    if (signedInPatient) {
+      const signedInName = `${signedInPatient.firstName} ${signedInPatient.lastName}`.trim();
+      setDisplayName(signedInName || deriveDisplayName(signedInPatient.email));
+      setRegisteredDisplayName(signedInName || deriveDisplayName(signedInPatient.email));
+      setRegisteredEmail(signedInPatient.portalAccount?.username ?? signedInPatient.email);
+      setUsername(signedInPatient.portalAccount?.username ?? signedInPatient.email);
+      setOnboardingStep(signedInPatient.hasCompletedOnboarding ? 'app' : 'servicesConsent');
+      setShowCoordinatorIntro(!signedInPatient.hasCompletedOnboarding);
+      if (state.lastPatientTab) {
+        setActiveTab(state.lastPatientTab);
+      }
+      return;
+    }
+
+    const rememberedPatient = rememberedUsername
+      ? state.patients.find(
+          (p) => p.portalAccount?.username === rememberedUsername.trim().toLowerCase()
+        )
+      : undefined;
+    if (rememberedPatient?.portalAccount) {
+      setUsername(rememberedPatient.portalAccount.username);
+      setRegisteredEmail(rememberedPatient.portalAccount.username);
+      setRememberMe(true);
+      setEntryAuthTab('login');
+    } else {
+      setUsername(seededEmail);
+      setRegisteredEmail(seededEmail);
+      setRememberMe(false);
+      setEntryAuthTab('register');
+      if (rememberedUsername) {
+        window.localStorage.removeItem(SAVED_USERNAME_KEY);
+      }
+    }
+    setOnboardingStep('entry');
+    setShowCoordinatorIntro(false);
+    if (state.currentPatientId) {
+      setCurrentPatientAction(null);
     }
     if (state.lastPatientTab) {
       setActiveTab(state.lastPatientTab);
@@ -769,15 +800,33 @@ export default function MobilePrototypePage() {
     event.preventDefault();
     if (!canSubmitLogin) return;
 
+    const authResult = authenticatePatientAction(username, password);
+    if (!authResult.ok) {
+      setLoginError(
+        authResult.reason === 'missing-account'
+          ? 'Register first to create a demo account for this email, then sign in with that password.'
+          : 'That password does not match this demo account.'
+      );
+      setPassword('');
+      setJustRegistered(false);
+      return;
+    }
+
     if (rememberMe) {
       window.localStorage.setItem(SAVED_USERNAME_KEY, username.trim());
     } else {
       window.localStorage.removeItem(SAVED_USERNAME_KEY);
     }
 
-    setDisplayName(registeredDisplayName || deriveDisplayName(username));
+    const signedInPatient = useStore.getState().patients.find((p) => p.id === authResult.patientId);
+    const signedInName = signedInPatient
+      ? `${signedInPatient.firstName} ${signedInPatient.lastName}`.trim()
+      : '';
+    setDisplayName(signedInName || registeredDisplayName || deriveDisplayName(username));
+    setRegisteredDisplayName(signedInName || registeredDisplayName || deriveDisplayName(username));
+    setRegisteredEmail(signedInPatient?.portalAccount?.username ?? username.trim());
     setActiveTab('home');
-    if (hasCompletedOnboarding) {
+    if (signedInPatient?.hasCompletedOnboarding) {
       setOnboardingStep('app');
       setShowCoordinatorIntro(false);
     } else {
@@ -786,13 +835,15 @@ export default function MobilePrototypePage() {
     }
     setPassword('');
     setJustRegistered(false);
+    setLoginError('');
   }
 
-  function handleRegistrationComplete(payload: RegistrationPayload) {
-    const newPatientId = registerSelfAction({
+  function handleRegistrationComplete(payload: RegistrationPayload): PatientRegistrationResult {
+    const result = registerSelfAction({
       firstName: payload.firstName,
       lastName: payload.lastName,
       email: payload.email,
+      password: payload.password,
       phone: payload.phone,
       dob: payload.dob,
       preferredLanguage: payload.preferredLanguage,
@@ -802,7 +853,8 @@ export default function MobilePrototypePage() {
       nephrologistName: payload.nephrologistName,
       nephrologistEmail: payload.nephrologistEmail,
     });
-    setCurrentPatientAction(newPatientId);
+    if (!result.ok) return result;
+
     setRegisteredDisplayName(payload.displayName);
     setRegisteredEmail(payload.email);
     setUsername(payload.email);
@@ -811,13 +863,17 @@ export default function MobilePrototypePage() {
     setEntryAuthTab('login');
     setOnboardingStep('entry');
     setJustRegistered(true);
+    setLoginError('');
+    return result;
   }
 
   function handleSignOut() {
+    setCurrentPatientAction(null);
     setOnboardingStep('entry');
     setEntryAuthTab('login');
     setUsername(registeredEmail);
     setPassword('');
+    setLoginError('');
     setActiveTab('home');
     setMessagesIntent(null);
     setShowCoordinatorIntro(false);
@@ -845,8 +901,9 @@ export default function MobilePrototypePage() {
   }
 
   function handleEnterApp() {
+    if (!currentPatient) return;
     ensureInitialTodosAction(patientId);
-    markOnboardingCompleteAction();
+    markOnboardingCompleteAction(patientId);
     setOnboardingStep('app');
   }
 
@@ -869,16 +926,23 @@ export default function MobilePrototypePage() {
                 authTab={entryAuthTab}
                 canSubmit={canSubmitLogin}
                 justRegistered={justRegistered}
+                loginError={loginError}
                 onAuthTabChange={setEntryAuthTab}
                 onCreateAccount={handleRegistrationComplete}
                 onSignIn={handleSignIn}
                 password={password}
                 prefilledEmail={registeredEmail}
                 rememberMe={rememberMe}
-                setPassword={setPassword}
+                setPassword={(value) => {
+                  setPassword(value);
+                  setLoginError('');
+                }}
                 setRememberMe={setRememberMe}
                 setShowPassword={setShowPassword}
-                setUsername={setUsername}
+                setUsername={(value) => {
+                  setUsername(value);
+                  setLoginError('');
+                }}
                 showPassword={showPassword}
                 username={username}
               />
@@ -895,9 +959,10 @@ export default function MobilePrototypePage() {
                   handleEnterApp();
                 }}
                 onSkip={() => {
+                  if (!currentPatient) return;
                   ensureInitialTodosAction(patientId);
                   addEmergencyContactTodoAction(patientId);
-                  markOnboardingCompleteAction();
+                  markOnboardingCompleteAction(patientId);
                   setOnboardingStep('app');
                 }}
               />
@@ -1009,8 +1074,9 @@ type EntryAuthScreenProps = {
   authTab: EntryAuthTab;
   canSubmit: boolean;
   justRegistered: boolean;
+  loginError: string;
   onAuthTabChange: (tab: EntryAuthTab) => void;
-  onCreateAccount: (payload: RegistrationPayload) => void;
+  onCreateAccount: (payload: RegistrationPayload) => PatientRegistrationResult;
   onSignIn: (event: FormEvent<HTMLFormElement>) => void;
   password: string;
   prefilledEmail: string;
@@ -1027,6 +1093,7 @@ function EntryAuthScreen({
   authTab,
   canSubmit,
   justRegistered,
+  loginError,
   onAuthTabChange,
   onCreateAccount,
   onSignIn,
@@ -1050,6 +1117,14 @@ function EntryAuthScreen({
           <h1 className="text-[31px] font-bold tracking-tight text-slate-900">Patient Portal</h1>
           <p className="mt-1 text-sm text-slate-500">Your journey to a new beginning</p>
         </div>
+      </div>
+
+      <div className="mb-4 rounded-2xl border border-[#cfe4fb] bg-white/80 px-4 py-3 text-sm text-slate-700 shadow-sm">
+        <p className="font-semibold text-slate-900">Demo patient: Jack Thompson</p>
+        <p className="mt-1 text-xs leading-relaxed">
+          Register first with {DEMO_PATIENT_EMAIL}, create any password that meets the rules,
+          then sign in with those same credentials.
+        </p>
       </div>
 
       <div className="mb-4 rounded-full bg-white p-1 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
@@ -1080,6 +1155,7 @@ function EntryAuthScreen({
           <LoginScreen
             canSubmit={canSubmit}
             justRegistered={justRegistered}
+            errorMessage={loginError}
             onSignIn={onSignIn}
             password={password}
             prefilledEmail={prefilledEmail}
@@ -1101,6 +1177,7 @@ function EntryAuthScreen({
 
 type LoginScreenProps = {
   canSubmit: boolean;
+  errorMessage: string;
   justRegistered: boolean;
   onSignIn: (event: FormEvent<HTMLFormElement>) => void;
   password: string;
@@ -1116,6 +1193,7 @@ type LoginScreenProps = {
 
 function LoginScreen({
   canSubmit,
+  errorMessage,
   justRegistered,
   onSignIn,
   password,
@@ -1132,12 +1210,17 @@ function LoginScreen({
     <div className="h-full overflow-y-auto pr-1">
       {justRegistered && (
         <div className="mb-4 rounded-xl bg-[#edf5ff] px-3 py-2 text-xs text-[#2a6ead]">
-          Account created. Sign in using the email you registered with.
+          Account created. Sign in using the email and password you just registered.
         </div>
       )}
       {!justRegistered && prefilledEmail && (
         <div className="mb-4 rounded-xl bg-[#edf5ff] px-3 py-2 text-xs text-[#2a6ead]">
-          Continue with your registered account.
+          Already registered? Sign in with your email and password. First time here? Use Register first.
+        </div>
+      )}
+      {errorMessage && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {errorMessage}
         </div>
       )}
 
@@ -1216,13 +1299,13 @@ function RegistrationScreen({
   onCreateAccount,
   prefilledEmail,
 }: {
-  onCreateAccount: (payload: RegistrationPayload) => void;
+  onCreateAccount: (payload: RegistrationPayload) => PatientRegistrationResult;
   prefilledEmail: string;
 }) {
   const findPatientByEmail = useStore((s) => s.findPatientByEmail);
   const [selectedTitleIndex, setSelectedTitleIndex] = useState(0);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState('Jack');
+  const [lastName, setLastName] = useState('Thompson');
   const [email, setEmail] = useState(prefilledEmail);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -1259,7 +1342,7 @@ function RegistrationScreen({
     }
     const handle = window.setTimeout(() => {
       const found = findPatientByEmail(trimmed);
-      if (found && found.referralSource === 'clinic') {
+      if (found && found.referralSource === 'clinic' && !found.portalAccount) {
         setMatchedReferral(found);
       } else {
         setMatchedReferral(null);
@@ -1270,8 +1353,12 @@ function RegistrationScreen({
 
   useEffect(() => {
     if (!matchedReferral) return;
-    if (!firstName.trim() && matchedReferral.firstName) setFirstName(matchedReferral.firstName);
-    if (!lastName.trim() && matchedReferral.lastName) setLastName(matchedReferral.lastName);
+    if ((!firstName.trim() || firstName === 'Jack') && matchedReferral.firstName) {
+      setFirstName(matchedReferral.firstName);
+    }
+    if ((!lastName.trim() || lastName === 'Thompson') && matchedReferral.lastName) {
+      setLastName(matchedReferral.lastName);
+    }
     if (matchedReferral.referringClinic) {
       const idx = DIALYSIS_CLINICS.indexOf(matchedReferral.referringClinic);
       if (idx > 0) setSelectedDialysisClinic(idx);
@@ -1296,6 +1383,8 @@ function RegistrationScreen({
       errors.email = 'Email address is required';
     } else if (!isValidEmailLocal(email.trim())) {
       errors.email = 'Please enter a valid email address';
+    } else if (findPatientByEmail(email.trim())?.portalAccount) {
+      errors.email = 'An account already exists for this email. Use Sign In with the password you created.';
     }
     if (!password) {
       errors.password = 'Password is required';
@@ -1351,9 +1440,10 @@ function RegistrationScreen({
         }
       }
 
-      onCreateAccount({
+      const result = onCreateAccount({
         displayName: fullName || 'Jeremy Rolls',
         email: email.trim(),
+        password,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: phoneNumber.trim() || undefined,
@@ -1365,6 +1455,12 @@ function RegistrationScreen({
         nephrologistName: nephName,
         nephrologistEmail: nephEmail,
       });
+      if (!result.ok) {
+        setFieldErrors({
+          email: 'An account already exists for this email. Use Sign In with the password you created.',
+        });
+        setErrorMessage('This email already has a demo account.');
+      }
     }, 700);
   }
 
@@ -1373,7 +1469,7 @@ function RegistrationScreen({
       <div className="space-y-5 pb-2">
         <div className="space-y-1 text-center">
           <h2 className="text-2xl font-bold text-slate-900">Create Your Account</h2>
-          <p className="text-sm text-slate-500">Join our HIPAA-compliant transplant platform</p>
+          <p className="text-sm text-slate-500">Register once, then sign in with this email and password.</p>
         </div>
 
         {errorMessage && (
@@ -1564,7 +1660,7 @@ function RegistrationScreen({
               label="Password *"
               value={password}
               onChange={setPassword}
-              placeholder="Create a secure password"
+              placeholder="Create a password"
               showPassword={showPassword}
               setShowPassword={setShowPassword}
               error={fieldErrors.password}
@@ -1600,7 +1696,7 @@ function RegistrationScreen({
 
         <div className="pb-1 text-center">
           <p className="text-[11px] text-slate-500">By creating an account, you agree to our Terms of Service and Privacy Policy.</p>
-          <p className="mt-2 text-[11px] text-emerald-600">Your data is HIPAA compliant and secure.</p>
+          <p className="mt-2 text-[11px] text-emerald-600">Demo account details are stored in this browser only.</p>
         </div>
       </div>
     </div>

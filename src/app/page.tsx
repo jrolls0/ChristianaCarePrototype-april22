@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Building2, Smartphone, Stethoscope } from 'lucide-react';
-import { useStore, STORAGE_KEY } from '@/lib/store';
+import { STORAGE_KEY } from '@/lib/store';
 
 interface Tile {
   key: 'patient' | 'staff' | 'clinic';
@@ -53,14 +53,8 @@ const TILES: Tile[] = [
 
 export default function LandingPage() {
   const router = useRouter();
-  const setCurrentPatient = useStore((s) => s.setCurrentPatient);
-  const patients = useStore((s) => s.patients);
 
   const handleTile = (tile: Tile) => {
-    if (tile.key === 'patient') {
-      const jack = patients.find((p) => p.id === 'patient-jack');
-      if (jack) setCurrentPatient(jack.id);
-    }
     router.push(tile.href);
   };
 

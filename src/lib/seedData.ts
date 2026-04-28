@@ -195,34 +195,6 @@ const buildDoc = (
 
 // ---------- Patients ----------
 
-const buildJack = (): Patient => {
-  const id = 'patient-jack';
-  return {
-    id,
-    firstName: 'Jack',
-    lastName: 'Thompson',
-    email: 'jack.thompson@email.com',
-    phone: '(302) 555-0142',
-    dob: '1973-09-14',
-    preferredLanguage: 'English',
-    referralSource: 'clinic',
-    referringClinic: RIVERSIDE,
-    referringClinician: RIVERSIDE_NEPH.name,
-    duswName: RIVERSIDE_DUSW.name,
-    duswEmail: RIVERSIDE_DUSW.email,
-    nephrologistName: RIVERSIDE_NEPH.name,
-    nephrologistEmail: RIVERSIDE_NEPH.email,
-    referralDate: hoursAgoIso(0.25),
-    stage: 'new-referral',
-    daysInStage: 0,
-    isStuck: false,
-    todos: [],
-    messages: [],
-    documents: [],
-    lastActivityAt: hoursAgoIso(0.25),
-  };
-};
-
 const buildMaria = (): Patient => {
   const id = 'patient-maria';
   return {
@@ -714,7 +686,6 @@ export interface InitialState {
   currentPatientId: string | null;
   currentStaffName: string;
   currentClinicUser: ClinicUser;
-  hasCompletedOnboarding: boolean;
   lastPatientTab: 'home' | 'amelia' | 'messages' | 'profile' | 'help';
 }
 
@@ -726,13 +697,11 @@ export const createInitialState = (): InitialState => ({
     buildJames(),
     buildPatricia(),
     buildDavid(),
-    buildJack(),
     buildRobertHayes(),
   ],
   currentPatientId: null,
   currentStaffName: STAFF_NAME,
   currentClinicUser: INITIAL_CLINIC_USER,
-  hasCompletedOnboarding: false,
   lastPatientTab: 'home',
 });
 

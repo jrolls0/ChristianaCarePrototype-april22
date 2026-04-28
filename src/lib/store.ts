@@ -29,6 +29,8 @@ const patientsById = (patients: Patient[]) =>
 const replacePatient = (patients: Patient[], updated: Patient): Patient[] =>
   patients.map((p) => (p.id === updated.id ? updated : p));
 
+const normalizeUsername = (value: string) => value.trim().toLowerCase();
+
 const newSafeStorage = () =>
   createJSONStorage(() => {
     if (typeof window === 'undefined') {
@@ -184,11 +186,26 @@ export const useStore = create<DemoState>()(
 
       registerSelf: (data) => {
         const state = get();
-        const lookupEmail = data.email.trim().toLowerCase();
+        const lookupEmail = normalizeUsername(data.email);
+        const existingAccount = state.patients.find(
+          (p) => p.portalAccount?.username === lookupEmail
+        );
+        if (existingAccount) {
+          return {
+            ok: false,
+            reason: 'account-exists',
+            patientId: existingAccount.id,
+          };
+        }
         const match = state.patients.find(
-          (p) => p.email.toLowerCase() === lookupEmail
+          (p) => normalizeUsername(p.email) === lookupEmail
         );
         const now = new Date().toISOString();
+        const portalAccount = {
+          username: lookupEmail,
+          password: data.password,
+          createdAt: now,
+        };
 
         const seededInitialTodos = (patientId: string): Todo[] => [
           {
@@ -222,10 +239,13 @@ export const useStore = create<DemoState>()(
             ...match,
             firstName: data.firstName || match.firstName,
             lastName: data.lastName || match.lastName,
+            email: data.email,
             phone: data.phone || match.phone,
             dob: data.dob || match.dob,
             preferredLanguage:
               data.preferredLanguage || match.preferredLanguage,
+            portalAccount,
+            hasCompletedOnboarding: match.hasCompletedOnboarding ?? false,
             stage: wasNewReferral ? 'patient-onboarding' : match.stage,
             daysInStage: wasNewReferral ? 0 : match.daysInStage,
             isStuck: wasNewReferral ? false : match.isStuck,
@@ -250,7 +270,7 @@ export const useStore = create<DemoState>()(
               : match.messages,
           };
           set({ patients: replacePatient(state.patients, updated) });
-          return match.id;
+          return { ok: true, patientId: match.id };
         }
 
         const newId = `patient-${nextIdSuffix()}`;
@@ -274,6 +294,8 @@ export const useStore = create<DemoState>()(
           stage: 'patient-onboarding',
           daysInStage: 0,
           isStuck: false,
+          portalAccount,
+          hasCompletedOnboarding: false,
           todos: seededInitialTodos(newId),
           messages: [
             {
@@ -294,13 +316,28 @@ export const useStore = create<DemoState>()(
           lastActivityAt: now,
         };
         set({ patients: [...state.patients, newPatient] });
-        return newId;
+        return { ok: true, patientId: newId };
+      },
+
+      authenticatePatient: (username, password) => {
+        const lookup = normalizeUsername(username);
+        const patient = get().patients.find(
+          (p) => p.portalAccount?.username === lookup
+        );
+        if (!patient || !patient.portalAccount) {
+          return { ok: false, reason: 'missing-account' };
+        }
+        if (patient.portalAccount.password !== password) {
+          return { ok: false, reason: 'invalid-password' };
+        }
+        set({ currentPatientId: patient.id });
+        return { ok: true, patientId: patient.id };
       },
 
       findPatientByEmail: (email) => {
-        const lookup = email.trim().toLowerCase();
+        const lookup = normalizeUsername(email);
         if (!lookup) return undefined;
-        return get().patients.find((p) => p.email.toLowerCase() === lookup);
+        return get().patients.find((p) => normalizeUsername(p.email) === lookup);
       },
 
       completeTodo: (patientId, todoId) => {
@@ -537,8 +574,12 @@ export const useStore = create<DemoState>()(
         set({ currentPatientId: patientId });
       },
 
-      markOnboardingComplete: () => {
-        set({ hasCompletedOnboarding: true });
+      markOnboardingComplete: (patientId) => {
+        set({
+          patients: get().patients.map((p) =>
+            p.id === patientId ? { ...p, hasCompletedOnboarding: true } : p
+          ),
+        });
       },
 
       setLastPatientTab: (tab) => {
@@ -587,14 +628,25 @@ export const useStore = create<DemoState>()(
         currentPatientId: state.currentPatientId,
         currentStaffName: state.currentStaffName,
         currentClinicUser: state.currentClinicUser,
-        hasCompletedOnboarding: state.hasCompletedOnboarding,
         lastPatientTab: state.lastPatientTab,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         state.patients = state.patients.map((p) =>
-          p.referralSource ? p : { ...p, referralSource: 'clinic' as const }
+          p.referralSource
+            ? { ...p, hasCompletedOnboarding: p.hasCompletedOnboarding ?? false }
+            : {
+                ...p,
+                referralSource: 'clinic' as const,
+                hasCompletedOnboarding: p.hasCompletedOnboarding ?? false,
+              }
         );
+        const signedInPatient = state.currentPatientId
+          ? state.patients.find((p) => p.id === state.currentPatientId)
+          : undefined;
+        if (!signedInPatient?.portalAccount) {
+          state.currentPatientId = null;
+        }
       },
     }
   )

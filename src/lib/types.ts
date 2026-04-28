@@ -71,6 +71,12 @@ export interface EmergencyContact {
 
 export type ReferralSource = 'clinic' | 'self';
 
+export interface PortalAccount {
+  username: string;
+  password: string;
+  createdAt: string;
+}
+
 export interface Patient {
   id: string;
   firstName: string;
@@ -96,6 +102,8 @@ export interface Patient {
   documents: DocumentRecord[];
   lastActivityAt: string;
   isCurrentPatient?: boolean;
+  portalAccount?: PortalAccount;
+  hasCompletedOnboarding?: boolean;
 }
 
 export interface ReferralSubmission {
@@ -116,6 +124,7 @@ export interface SelfRegistration {
   firstName: string;
   lastName: string;
   email: string;
+  password: string;
   phone?: string;
   dob?: string;
   preferredLanguage?: 'English' | 'Spanish';
@@ -133,18 +142,26 @@ export interface ClinicUser {
 
 export type PatientTab = 'home' | 'amelia' | 'messages' | 'profile' | 'help';
 
+export type PatientRegistrationResult =
+  | { ok: true; patientId: string }
+  | { ok: false; reason: 'account-exists'; patientId?: string };
+
+export type PatientAuthResult =
+  | { ok: true; patientId: string }
+  | { ok: false; reason: 'missing-account' | 'invalid-password' };
+
 export interface DemoState {
   patients: Patient[];
   currentPatientId: string | null;
   currentStaffName: string;
   currentClinicUser: ClinicUser;
-  hasCompletedOnboarding: boolean;
   lastPatientTab: PatientTab;
 
   submitReferral: (data: ReferralSubmission) => string;
-  registerSelf: (data: SelfRegistration) => string;
+  registerSelf: (data: SelfRegistration) => PatientRegistrationResult;
+  authenticatePatient: (username: string, password: string) => PatientAuthResult;
   findPatientByEmail: (email: string) => Patient | undefined;
-  markOnboardingComplete: () => void;
+  markOnboardingComplete: (patientId: string) => void;
   setLastPatientTab: (tab: PatientTab) => void;
   completeTodo: (patientId: string, todoId: string) => void;
   addCustomTodo: (
@@ -169,7 +186,7 @@ export interface DemoState {
     name: string,
     source: 'patient' | 'clinic'
   ) => void;
-  setCurrentPatient: (patientId: string) => void;
+  setCurrentPatient: (patientId: string | null) => void;
   advancePatientStage: (patientId: string) => void;
   resetDemo: () => void;
 }
