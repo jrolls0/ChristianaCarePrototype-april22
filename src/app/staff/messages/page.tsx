@@ -190,8 +190,13 @@ function MessagesInner() {
 
   return (
     <StaffShell>
-      <main className={clsx('py-6', STAFF_CONTAINER)}>
-        <div className="mb-4 flex items-center justify-between">
+      <main
+        className={clsx(
+          'flex min-h-0 flex-col py-6 lg:h-[calc(100vh-65px)] lg:overflow-hidden',
+          STAFF_CONTAINER
+        )}
+      >
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Inbox</h2>
             <p className="text-sm text-slate-500">
@@ -210,10 +215,10 @@ function MessagesInner() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]">
           {/* LEFT PANE — list */}
-          <aside className="flex min-h-[640px] flex-col border-b border-slate-200 lg:border-b-0 lg:border-r">
-            <div className="border-b border-slate-100 px-4 py-3">
+          <aside className="flex min-h-[420px] flex-col border-b border-slate-200 lg:min-h-0 lg:border-b-0 lg:border-r">
+            <div className="shrink-0 border-b border-slate-100 px-4 py-3">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -257,7 +262,7 @@ function MessagesInner() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {filteredConvos.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center px-8 py-16 text-center">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
@@ -356,7 +361,7 @@ function MessagesInner() {
           </aside>
 
           {/* RIGHT PANE — conversation */}
-          <section className="flex min-h-[640px] flex-col">
+          <section className="flex min-h-[520px] flex-col lg:min-h-0">
             {!selected ? (
               <div className="flex h-full flex-col items-center justify-center px-8 py-24 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-400">
@@ -371,7 +376,7 @@ function MessagesInner() {
               </div>
             ) : (
               <>
-                <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
+                <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-sm font-semibold text-white">
                       {selected.patient.firstName[0]}
@@ -405,14 +410,14 @@ function MessagesInner() {
 
                 <div
                   ref={scrollRef}
-                  className="flex-1 space-y-3 overflow-y-auto bg-slate-50/40 px-6 py-5"
+                  className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50/40 px-6 py-5"
                 >
                   {selected.messages.map((m) => (
                     <ThreadMessage key={m.id} message={m} viewerRole="staff" />
                   ))}
                 </div>
 
-                <div className="border-t border-slate-100 bg-white">
+                <div className="shrink-0 border-t border-slate-100 bg-white">
                   <AttachmentChips
                     attachments={replyAttachments}
                     onRemove={removeReplyAttachment}
