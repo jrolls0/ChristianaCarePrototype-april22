@@ -193,7 +193,7 @@ function MessagesInner() {
       <main className={clsx('py-6', STAFF_CONTAINER)}>
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">Messages</h2>
+            <h2 className="text-xl font-semibold text-slate-900">Inbox</h2>
             <p className="text-sm text-slate-500">
               {totalUnread === 0
                 ? 'Inbox is clear. Nothing waiting on you.'
@@ -269,7 +269,7 @@ function MessagesInner() {
                   <p className="mt-1 text-xs text-slate-500">
                     {query
                       ? 'Try a different search term.'
-                      : 'Messages will show up here as patients and clinics reach out.'}
+                      : 'Inbox conversations will show up here as patients and clinics reach out.'}
                   </p>
                 </div>
               ) : (

@@ -518,20 +518,20 @@ export default function StaffCaseDetailPage() {
             )}
           </div>
 
-          {/* RIGHT COLUMN — Messages (primary), Patient, Actions */}
+          {/* RIGHT COLUMN — Inbox (primary), Patient, Actions */}
           <div className="space-y-5 lg:col-span-5 xl:col-span-4">
-            {/* Messages — featured */}
+            {/* Inbox — featured */}
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="h-4 w-4 text-[#1a66cc]" />
-                  <h3 className="text-sm font-semibold text-slate-900">Messages</h3>
+                  <h3 className="text-sm font-semibold text-slate-900">Inbox</h3>
                 </div>
                 <Link
                   href={`/staff/messages?patient=${patient.id}&thread=${activeTab}`}
                   className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-[#1a66cc]"
                 >
-                  Open in Messages
+                  Open in Inbox
                   <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
