@@ -53,6 +53,7 @@ import type {
   DocumentRequest as StoreDocumentRequest,
   Patient as StorePatient,
   PatientRegistrationResult,
+  ScreeningResponses,
   Todo as StoreTodo,
 } from '../../lib/types';
 import {
@@ -655,6 +656,7 @@ export default function MobilePrototypePage() {
   const authenticatePatientAction = useStore((s) => s.authenticatePatient);
   const markOnboardingCompleteAction = useStore((s) => s.markOnboardingComplete);
   const setLastPatientTabAction = useStore((s) => s.setLastPatientTab);
+  const saveScreeningResponsesAction = useStore((s) => s.saveScreeningResponses);
 
   const currentPatient: StorePatient | null =
     currentPatientId ? patients.find((p) => p.id === currentPatientId) ?? null : null;
@@ -874,7 +876,7 @@ export default function MobilePrototypePage() {
     setShowCoordinatorIntro(false);
   }
 
-  function handleTodoComplete(todoId: string) {
+  function handleTodoComplete(todoId: string, screeningResponses?: ScreeningResponses) {
     const todo = currentPatient?.todos.find((t) => t.id === todoId);
     if (!todo) return;
     if (todo.type === 'upload-government-id') {
@@ -882,6 +884,8 @@ export default function MobilePrototypePage() {
     } else if (todo.type === 'upload-insurance-card') {
       uploadDocumentAction(patientId, 'Insurance Card — front', 'patient');
       uploadDocumentAction(patientId, 'Insurance Card — back', 'patient');
+    } else if (todo.type === 'complete-health-questionnaire' && screeningResponses) {
+      saveScreeningResponsesAction(patientId, screeningResponses);
     } else if (todo.type === 'custom' && todo.documentRequests?.length) {
       todo.documentRequests.forEach((req) => {
         uploadDocumentAction(patientId, req.title, 'patient');
@@ -2174,7 +2178,7 @@ function ConsentSection({ section }: { section: ConsentSectionData }) {
 type HomeTabProps = {
   completedTodos: MockTodo[];
   displayName: string;
-  onCompleteTodo: (todoId: string) => void;
+  onCompleteTodo: (todoId: string, screeningResponses?: ScreeningResponses) => void;
   onOpenUnreadMessage: () => void;
   pendingTodos: MockTodo[];
   patient: StorePatient | null;
@@ -2222,8 +2226,8 @@ function HomeTab({
       <div className="space-y-4">
         <TodoTaskWorkspace
           onClose={() => setActiveTodoId(null)}
-          onComplete={() => {
-            onCompleteTodo(activeTodo.id);
+          onComplete={(screeningResponses) => {
+            onCompleteTodo(activeTodo.id, screeningResponses);
             setActiveTodoId(null);
           }}
           todo={activeTodo}
@@ -2375,7 +2379,7 @@ function TodoTaskWorkspace({
   todo,
 }: {
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (screeningResponses?: ScreeningResponses) => void;
   todo: MockTodo;
 }) {
   if (todo.type === 'governmentIdUpload') {
@@ -2892,7 +2896,13 @@ function QuestionnaireRadioCard({
   );
 }
 
-function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
+function HealthQuestionnaireTaskCard({
+  onClose,
+  onComplete,
+}: {
+  onClose: () => void;
+  onComplete: (screeningResponses: ScreeningResponses) => void;
+}) {
   const [currentStep, setCurrentStep] = useState<QuestionnaireStep>(1);
 
   const [onDialysis, setOnDialysis] = useState<TernaryChoice>('');
@@ -2974,7 +2984,29 @@ function HealthQuestionnaireTaskCard({ onClose, onComplete }: { onClose: () => v
       return;
     }
     setShowStep2Validation(false);
-    onComplete();
+    onComplete({
+      onDialysis: onDialysis as ScreeningResponses['onDialysis'],
+      dialysisStart: needsDialysisStart ? `${dialysisStartMonth} ${dialysisStartYear}` : undefined,
+      egfr: dontKnowEgfr ? undefined : Number(eGFR),
+      egfrUnknown: dontKnowEgfr,
+      heightFeet: dontKnowHeight ? undefined : Number(heightFeet),
+      heightInches: dontKnowHeight ? undefined : Number(heightInches),
+      heightUnknown: dontKnowHeight,
+      weightPounds: dontKnowWeight ? undefined : Number(weightPounds),
+      weightUnknown: dontKnowWeight,
+      isCitizenOrResident: isCitizenOrResident as ScreeningResponses['isCitizenOrResident'],
+      needsMultiOrganTransplant:
+        needsMultiOrganTransplant as ScreeningResponses['needsMultiOrganTransplant'],
+      usesSupplementalOxygen:
+        usesSupplementalOxygen as ScreeningResponses['usesSupplementalOxygen'],
+      cardiacSurgeryLast6Months:
+        cardiacSurgeryLast6Months as ScreeningResponses['cardiacSurgeryLast6Months'],
+      activeCancer: activeCancer as ScreeningResponses['activeCancer'],
+      activeSubstanceUse: activeSubstanceUse as ScreeningResponses['activeSubstanceUse'],
+      hasOpenWounds: hasOpenWounds as ScreeningResponses['hasOpenWounds'],
+      otherConcerns: otherConcerns.trim() || undefined,
+      completedAt: new Date().toISOString(),
+    });
   }
 
   const baseFieldClassName =

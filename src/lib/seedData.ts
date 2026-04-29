@@ -3,6 +3,7 @@ import type {
   DocumentRecord,
   Message,
   Patient,
+  ScreeningResponses,
   ThreadKey,
   Todo,
 } from './types';
@@ -48,6 +49,85 @@ const todoId = (patientId: string, key: string) => `todo-${patientId}-${key}`;
 const msgId = (patientId: string, key: string) => `msg-${patientId}-${key}`;
 const docId = (patientId: string, key: string) => `doc-${patientId}-${key}`;
 const threadIdFor = (patientId: string, key: ThreadKey) => `${patientId}-${key}`;
+
+const completedAtFor = (patient: Patient, type: Todo['type']): string | undefined =>
+  patient.todos.find((todo) => todo.type === type && todo.status === 'completed')?.completedAt;
+
+const withDemoConsents = (patient: Patient): Patient => {
+  const roiSigned = Boolean(
+    completedAtFor(patient, 'sign-roi-services') && completedAtFor(patient, 'sign-roi-medical')
+  );
+  return {
+    ...patient,
+    roiSigned,
+    roiSignedAt:
+      patient.roiSignedAt ??
+      completedAtFor(patient, 'sign-roi-medical') ??
+      completedAtFor(patient, 'sign-roi-services'),
+    smsConsent: patient.smsConsent ?? roiSigned,
+    emailConsent: patient.emailConsent ?? roiSigned,
+    emergencyContactConsent:
+      patient.emergencyContactConsent ??
+      Boolean(patient.emergencyContact?.consented || completedAtFor(patient, 'add-emergency-contact')),
+  };
+};
+
+const screeningResponses = (
+  patient: Patient,
+  overrides: Partial<ScreeningResponses> = {}
+): ScreeningResponses | undefined => {
+  const completedAt = completedAtFor(patient, 'complete-health-questionnaire');
+  if (!completedAt) return undefined;
+  return {
+    onDialysis: 'yes',
+    dialysisStart: 'May 2024',
+    egfr: 11,
+    heightFeet: 5,
+    heightInches: 8,
+    weightPounds: 182,
+    isCitizenOrResident: 'yes',
+    needsMultiOrganTransplant: 'no',
+    usesSupplementalOxygen: 'no',
+    cardiacSurgeryLast6Months: 'no',
+    activeCancer: 'no',
+    activeSubstanceUse: 'no',
+    hasOpenWounds: 'no',
+    completedAt,
+    ...overrides,
+  };
+};
+
+const withDemoPatientState = (patient: Patient): Patient => {
+  const screeningOverrides: Partial<ScreeningResponses> =
+    patient.id === 'patient-robert'
+      ? {
+          usesSupplementalOxygen: 'yes',
+          otherConcerns:
+            'Patient reports intermittent oxygen use after dialysis. Staff should clarify before routing forward.',
+        }
+      : patient.id === 'patient-linda'
+        ? {
+            heightFeet: 5,
+            heightInches: 3,
+            weightPounds: 158,
+          }
+        : patient.id === 'patient-patricia'
+          ? {
+              egfr: 9,
+              weightPounds: 174,
+            }
+          : patient.id === 'patient-david'
+            ? {
+                cardiacSurgeryLast6Months: 'notSure',
+                otherConcerns: 'Patient is unsure whether a recent cardiac procedure counts as surgery.',
+              }
+            : {};
+  return withDemoConsents({
+    ...patient,
+    screeningResponses:
+      patient.screeningResponses ?? screeningResponses(patient, screeningOverrides),
+  });
+};
 
 interface BuildTodoInput {
   patientId: string;
@@ -780,7 +860,7 @@ export const createInitialState = (): InitialState => ({
     buildDavid(),
     buildElaine(),
     buildRobertHayes(),
-  ],
+  ].map(withDemoPatientState),
   currentPatientId: null,
   currentStaffName: STAFF_NAME,
   currentClinicUser: INITIAL_CLINIC_USER,

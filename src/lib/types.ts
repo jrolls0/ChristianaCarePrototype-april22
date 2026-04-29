@@ -60,7 +60,7 @@ export interface DocumentRecord {
   id: string;
   name: string;
   uploadedAt: string;
-  uploadedBy: 'patient' | 'clinic';
+  uploadedBy: 'patient' | 'clinic' | 'staff';
 }
 
 export interface EmergencyContact {
@@ -76,6 +76,36 @@ export interface PortalAccount {
   username: string;
   password: string;
   createdAt: string;
+}
+
+export interface ScreeningResponses {
+  onDialysis: 'yes' | 'no' | 'notSure';
+  dialysisStart?: string;
+  egfr?: number;
+  egfrUnknown?: boolean;
+  heightFeet?: number;
+  heightInches?: number;
+  heightUnknown?: boolean;
+  weightPounds?: number;
+  weightUnknown?: boolean;
+  isCitizenOrResident: 'yes' | 'no' | 'notSure';
+  needsMultiOrganTransplant: 'yes' | 'no' | 'notSure';
+  usesSupplementalOxygen: 'yes' | 'no' | 'notSure';
+  cardiacSurgeryLast6Months: 'yes' | 'no' | 'notSure';
+  activeCancer: 'yes' | 'no' | 'notSure';
+  activeSubstanceUse: 'yes' | 'no' | 'preferNotToAnswer';
+  hasOpenWounds: 'yes' | 'no' | 'notSure';
+  otherConcerns?: string;
+  completedAt: string;
+}
+
+export interface EndReferralRecord {
+  reasonCode: string;
+  reasonLabel: string;
+  rationale: string;
+  letterDraft: string;
+  endedAt: string;
+  endedBy: string;
 }
 
 export interface Patient {
@@ -105,6 +135,13 @@ export interface Patient {
   isCurrentPatient?: boolean;
   portalAccount?: PortalAccount;
   hasCompletedOnboarding?: boolean;
+  roiSigned?: boolean;
+  roiSignedAt?: string;
+  smsConsent?: boolean;
+  emailConsent?: boolean;
+  emergencyContactConsent?: boolean;
+  screeningResponses?: ScreeningResponses;
+  endReferral?: EndReferralRecord;
 }
 
 export interface ReferralSubmission {
@@ -185,7 +222,12 @@ export interface DemoState {
   uploadDocument: (
     patientId: string,
     name: string,
-    source: 'patient' | 'clinic'
+    source: 'patient' | 'clinic' | 'staff'
+  ) => void;
+  saveScreeningResponses: (patientId: string, responses: ScreeningResponses) => void;
+  endReferral: (
+    patientId: string,
+    payload: { reasonCode: string; reasonLabel: string; rationale: string; letterDraft: string }
   ) => void;
   setCurrentPatient: (patientId: string | null) => void;
   advancePatientStage: (patientId: string) => void;

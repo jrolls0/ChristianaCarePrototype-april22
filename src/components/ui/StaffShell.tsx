@@ -107,7 +107,7 @@ export function StaffShell({ children }: StaffShellProps) {
               </div>
             </div>
 
-            <nav className="mt-4 flex items-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1 lg:hidden">
+            <nav className="mt-4 grid grid-cols-3 gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1 lg:hidden">
               <MobileNavLink href="/staff" active={onCases}>
                 Cases
               </MobileNavLink>
@@ -180,7 +180,7 @@ function MobileNavLink({
     <Link
       href={href}
       className={clsx(
-        'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition',
+        'flex min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-sm font-semibold transition',
         active
           ? 'bg-white text-[#1a66cc] shadow-sm ring-1 ring-slate-200'
           : 'text-slate-600 hover:text-slate-900'

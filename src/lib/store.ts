@@ -32,11 +32,39 @@ const replacePatient = (patients: Patient[], updated: Patient): Patient[] =>
 
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
+function latestIso(values: Array<string | undefined>): string | undefined {
+  return values
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+}
+
+function withDerivedPatientFields(patient: Patient): Patient {
+  const roiServices = patient.todos.find((todo) => todo.type === 'sign-roi-services');
+  const roiMedical = patient.todos.find((todo) => todo.type === 'sign-roi-medical');
+  const roiSignedFromTodos =
+    roiServices?.status === 'completed' && roiMedical?.status === 'completed';
+  const emergencyContactConsentFromTodo = patient.todos.some(
+    (todo) => todo.type === 'add-emergency-contact' && todo.status === 'completed'
+  );
+  const roiSigned = patient.roiSigned ?? roiSignedFromTodos;
+  const roiSignedAt =
+    patient.roiSignedAt ?? latestIso([roiServices?.completedAt, roiMedical?.completedAt]);
+
+  return {
+    ...patient,
+    stage: normalizePatientStage(patient.stage),
+    roiSigned,
+    roiSignedAt,
+    smsConsent: patient.smsConsent ?? roiSigned,
+    emailConsent: patient.emailConsent ?? roiSigned,
+    emergencyContactConsent:
+      patient.emergencyContactConsent ??
+      Boolean(patient.emergencyContact?.consented || emergencyContactConsentFromTodo),
+  };
+}
+
 const normalizePersistedPatients = (patients: Patient[] | undefined): Patient[] | undefined =>
-  patients?.map((p) => ({
-    ...p,
-    stage: normalizePatientStage(p.stage),
-  }));
+  patients?.map(withDerivedPatientFields);
 
 const migratePersistedState = (persistedState: unknown): Partial<DemoState> => {
   const state =
@@ -418,9 +446,12 @@ export const useStore = create<DemoState>()(
         set({
           patients: get().patients.map((p) => {
             if (p.id !== patientId) return p;
+            const todo = p.todos.find((t) => t.id === todoId);
             const updated: Patient = {
               ...p,
               lastActivityAt: now,
+              emergencyContactConsent:
+                todo?.type === 'add-emergency-contact' ? true : p.emergencyContactConsent,
               todos: p.todos.map((t) =>
                 t.id === todoId
                   ? { ...t, status: 'completed', completedAt: now }
@@ -623,6 +654,42 @@ export const useStore = create<DemoState>()(
         });
       },
 
+      saveScreeningResponses: (patientId, responses) => {
+        const now = new Date().toISOString();
+        set({
+          patients: get().patients.map((p) =>
+            p.id !== patientId
+              ? p
+              : {
+                  ...p,
+                  screeningResponses: responses,
+                  lastActivityAt: responses.completedAt || now,
+                }
+          ),
+        });
+      },
+
+      endReferral: (patientId, payload) => {
+        const now = new Date().toISOString();
+        const staffName = get().currentStaffName;
+        set({
+          patients: get().patients.map((p) =>
+            p.id !== patientId
+              ? p
+              : {
+                  ...p,
+                  endReferral: {
+                    ...payload,
+                    endedAt: now,
+                    endedBy: staffName,
+                  },
+                  isStuck: false,
+                  lastActivityAt: now,
+                }
+          ),
+        });
+      },
+
       setCurrentPatient: (patientId) => {
         set({ currentPatientId: patientId });
       },
@@ -640,6 +707,10 @@ export const useStore = create<DemoState>()(
               isStuck: normalizedStage === 'onboarding' ? false : p.isStuck,
               lastActivityAt: now,
               hasCompletedOnboarding: true,
+              roiSigned: true,
+              roiSignedAt: p.roiSignedAt ?? now,
+              smsConsent: p.smsConsent ?? true,
+              emailConsent: p.emailConsent ?? true,
             };
           }),
         });
@@ -675,7 +746,7 @@ export const useStore = create<DemoState>()(
     }),
     {
       name: STORAGE_KEY,
-      version: 2,
+      version: 3,
       storage: newSafeStorage(),
       migrate: (persistedState) => migratePersistedState(persistedState),
       partialize: (state) => ({
@@ -688,18 +759,18 @@ export const useStore = create<DemoState>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         state.patients = state.patients.map((p) =>
-          p.referralSource
-            ? {
-                ...p,
-                stage: normalizePatientStage(p.stage),
-                hasCompletedOnboarding: p.hasCompletedOnboarding ?? false,
-              }
-            : {
-                ...p,
-                stage: normalizePatientStage(p.stage),
-                referralSource: 'clinic' as const,
-                hasCompletedOnboarding: p.hasCompletedOnboarding ?? false,
-              }
+          withDerivedPatientFields(
+            p.referralSource
+              ? {
+                  ...p,
+                  hasCompletedOnboarding: p.hasCompletedOnboarding ?? false,
+                }
+              : {
+                  ...p,
+                  referralSource: 'clinic' as const,
+                  hasCompletedOnboarding: p.hasCompletedOnboarding ?? false,
+                }
+          )
         );
         const signedInPatient = state.currentPatientId
           ? state.patients.find((p) => p.id === state.currentPatientId)
