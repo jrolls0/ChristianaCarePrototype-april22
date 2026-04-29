@@ -880,10 +880,10 @@ export default function MobilePrototypePage() {
     const todo = currentPatient?.todos.find((t) => t.id === todoId);
     if (!todo) return;
     if (todo.type === 'upload-government-id') {
-      uploadDocumentAction(patientId, 'Government ID — front', 'patient');
+      uploadDocumentAction(patientId, 'Government ID (Front)', 'patient');
     } else if (todo.type === 'upload-insurance-card') {
-      uploadDocumentAction(patientId, 'Insurance Card — front', 'patient');
-      uploadDocumentAction(patientId, 'Insurance Card — back', 'patient');
+      uploadDocumentAction(patientId, 'Insurance Card (Front)', 'patient');
+      uploadDocumentAction(patientId, 'Insurance Card (Back)', 'patient');
     } else if (todo.type === 'complete-health-questionnaire' && screeningResponses) {
       saveScreeningResponsesAction(patientId, screeningResponses);
     } else if (todo.type === 'custom' && todo.documentRequests?.length) {

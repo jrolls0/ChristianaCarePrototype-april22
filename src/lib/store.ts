@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type {
   DemoState,
+  DocumentRecord,
   Message,
   MessageRole,
   Patient,
@@ -31,6 +32,72 @@ const replacePatient = (patients: Patient[], updated: Patient): Patient[] =>
   patients.map((p) => (p.id === updated.id ? updated : p));
 
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
+
+const SERVICES_ROI_DOCUMENT = 'Services ROI';
+const MEDICAL_ROI_DOCUMENT = 'Medical Records ROI';
+const HEALTH_QUESTIONNAIRE_DOCUMENT = 'Health Questionnaire Summary';
+
+function hasDocumentNamed(documents: DocumentRecord[], name: string): boolean {
+  return documents.some((document) => document.name.toLowerCase() === name.toLowerCase());
+}
+
+function appendDocumentIfMissing(
+  documents: DocumentRecord[],
+  patientId: string,
+  name: string,
+  uploadedAt: string,
+  uploadedBy: DocumentRecord['uploadedBy'] = 'patient'
+): DocumentRecord[] {
+  if (hasDocumentNamed(documents, name)) return documents;
+  return [
+    ...documents,
+    {
+      id: `doc-${patientId}-${nextIdSuffix()}`,
+      name,
+      uploadedAt,
+      uploadedBy,
+    },
+  ];
+}
+
+function withRoiDocuments(patient: Patient, now: string): Patient {
+  const roiServices = patient.todos.find((todo) => todo.type === 'sign-roi-services');
+  const roiMedical = patient.todos.find((todo) => todo.type === 'sign-roi-medical');
+  const roiComplete =
+    patient.roiSigned ??
+    (roiServices?.status === 'completed' && roiMedical?.status === 'completed');
+  if (!roiComplete) return patient;
+
+  let documents = appendDocumentIfMissing(
+    patient.documents,
+    patient.id,
+    SERVICES_ROI_DOCUMENT,
+    roiServices?.completedAt ?? patient.roiSignedAt ?? now
+  );
+  documents = appendDocumentIfMissing(
+    documents,
+    patient.id,
+    MEDICAL_ROI_DOCUMENT,
+    roiMedical?.completedAt ?? patient.roiSignedAt ?? now
+  );
+  return { ...patient, documents };
+}
+
+function withHealthQuestionnaireDocument(patient: Patient, now: string): Patient {
+  const healthTodo = patient.todos.find(
+    (todo) => todo.type === 'complete-health-questionnaire' && todo.status === 'completed'
+  );
+  if (!healthTodo) return patient;
+  return {
+    ...patient,
+    documents: appendDocumentIfMissing(
+      patient.documents,
+      patient.id,
+      HEALTH_QUESTIONNAIRE_DOCUMENT,
+      patient.screeningResponses?.completedAt ?? healthTodo.completedAt ?? now
+    ),
+  };
+}
 
 function latestIso(values: Array<string | undefined>): string | undefined {
   return values
@@ -123,13 +190,13 @@ function initialTodosComplete(todos: Todo[]): boolean {
 function advanceAfterInitialTodos(patient: Patient, now: string): Patient {
   if (normalizePatientStage(patient.stage) !== 'initial-todos') return patient;
   if (!initialTodosComplete(patient.todos)) return patient;
-  return {
+  return withHealthQuestionnaireDocument({
     ...patient,
     stage: 'initial-screening',
     daysInStage: 0,
     isStuck: false,
     lastActivityAt: now,
-  };
+  }, now);
 }
 
 const newSafeStorage = () =>
@@ -700,7 +767,7 @@ export const useStore = create<DemoState>()(
           patients: get().patients.map((p) => {
             if (p.id !== patientId) return p;
             const normalizedStage = normalizePatientStage(p.stage);
-            return {
+            return withRoiDocuments({
               ...p,
               stage: normalizedStage === 'onboarding' ? 'initial-todos' : normalizedStage,
               daysInStage: normalizedStage === 'onboarding' ? 0 : p.daysInStage,
@@ -711,7 +778,7 @@ export const useStore = create<DemoState>()(
               roiSignedAt: p.roiSignedAt ?? now,
               smsConsent: p.smsConsent ?? true,
               emailConsent: p.emailConsent ?? true,
-            };
+            }, now);
           }),
         });
       },
