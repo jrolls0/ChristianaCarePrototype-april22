@@ -321,6 +321,7 @@ export default function StaffCaseDetailPage() {
 
   const [activeCockpitTab, setActiveCockpitTab] = useState<CockpitTab>('summary');
   const [todoOpen, setTodoOpen] = useState(false);
+  const [stageConfirmOpen, setStageConfirmOpen] = useState(false);
   const [activeMsgTab, setActiveMsgTab] = useState<MsgTab>('patient');
   const [quickReply, setQuickReply] = useState('');
   const [quickReplyAttachments, setQuickReplyAttachments] = useState<Attachment[]>([]);
@@ -430,7 +431,7 @@ export default function StaffCaseDetailPage() {
         <WorkflowProgress
           patient={patient}
           nextStage={nextStage}
-          onAdvance={() => advanceStage(patient.id)}
+          onAdvance={() => setStageConfirmOpen(true)}
         />
 
         <nav className="mt-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
@@ -502,6 +503,18 @@ export default function StaffCaseDetailPage() {
           onSubmit={(title, description, documentRequests) => {
             addCustomTodo(patient.id, title, description, documentRequests);
             setTodoOpen(false);
+          }}
+        />
+      )}
+
+      {stageConfirmOpen && nextStage && (
+        <StageAdvanceConfirmModal
+          nextStage={nextStage}
+          patient={patient}
+          onClose={() => setStageConfirmOpen(false)}
+          onConfirm={() => {
+            advanceStage(patient.id);
+            setStageConfirmOpen(false);
           }}
         />
       )}
@@ -742,6 +755,89 @@ function WorkflowProgress({
         </div>
       </div>
     </section>
+  );
+}
+
+function StageAdvanceConfirmModal({
+  nextStage,
+  onClose,
+  onConfirm,
+  patient,
+}: {
+  nextStage: Patient['stage'];
+  onClose: () => void;
+  onConfirm: () => void;
+  patient: Patient;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 py-6 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">Confirm Stage Completion</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              This will move the case forward in the transplant center workflow.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close confirmation"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-6 py-5">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <p>
+                Only continue if staff review for this stage is complete. This change is saved
+                immediately in the demo state.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">
+              {patient.firstName} {patient.lastName}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              Current stage: <span className="font-medium text-slate-900">{PATIENT_STAGE_LABEL[patient.stage]}</span>
+            </p>
+            <p className="text-sm text-slate-600">
+              New stage: <span className="font-medium text-slate-900">{PATIENT_STAGE_LABEL[nextStage]}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-slate-100 px-6 py-4 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#1a66cc] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1558ad]"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            Confirm stage complete
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
