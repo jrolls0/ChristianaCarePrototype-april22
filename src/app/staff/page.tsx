@@ -19,6 +19,7 @@ import { clsx } from 'clsx';
 import { StaffShell, STAFF_CONTAINER } from '@/components/ui/StaffShell';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { StuckBadge } from '@/components/ui/StuckBadge';
+import { ScreeningReviewBadge } from '@/components/ui/ScreeningReviewBadge';
 import { useStore } from '@/lib/store';
 import { PATIENT_STAGE_LABEL } from '@/lib/stages';
 import type { Patient, PatientStage } from '@/lib/types';
@@ -95,16 +96,6 @@ function nextAction(patient: Patient): string {
   if (patient.isStuck) return 'Unblock case';
   if (hasUnreadStaffMessage(patient)) return 'Reply in Inbox';
   return 'Open case';
-}
-
-function needsActionDescription(patient: Patient): string {
-  if (isSelfSignupNeedingFollowup(patient)) {
-    return `${patient.firstName} ${patient.lastName} · clinic info`;
-  }
-  if (patient.stage === 'initial-screening') {
-    return `${patient.firstName} ${patient.lastName} · screening review`;
-  }
-  return `${patient.firstName} ${patient.lastName} · ${patient.daysInStage}d`;
 }
 
 function searchText(patient: Patient): string {
@@ -242,10 +233,7 @@ export default function StaffDashboardPage() {
               value={needsActionCount}
               description={
                 needsActionCount > 0
-                  ? needsActionPatients
-                      .slice(0, 2)
-                      .map(needsActionDescription)
-                      .join(', ')
+                  ? 'Staff follow-up needed'
                   : 'No staff actions pending'
               }
               icon={AlertTriangle}
@@ -431,9 +419,14 @@ function PatientIdentity({ patient }: { patient: Patient }) {
         {patient.lastName[0]}
       </div>
       <div className="min-w-0">
-        <div className="flex items-center gap-2 truncate font-semibold text-slate-900">
-          {patient.firstName} {patient.lastName}
-          {patient.isStuck && <StuckBadge days={patient.daysInStage} />}
+        <div className="flex min-w-0 items-center gap-2 font-semibold text-slate-900">
+          <span className="min-w-0 truncate">
+            {patient.firstName} {patient.lastName}
+          </span>
+          {patient.stage === 'initial-screening' && <ScreeningReviewBadge />}
+          {patient.stage !== 'initial-screening' && patient.isStuck && (
+            <StuckBadge days={patient.daysInStage} />
+          )}
         </div>
         <div className="flex items-center gap-1.5 text-xs text-slate-500">
           <Stethoscope className="h-3 w-3 text-slate-400" />
