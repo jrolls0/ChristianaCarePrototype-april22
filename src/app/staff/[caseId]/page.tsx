@@ -1265,6 +1265,72 @@ function documentSortRank(name: string): number {
   return 100;
 }
 
+function documentNameMatches(a: string, b: string): boolean {
+  return displayDocumentName(a).toLowerCase() === displayDocumentName(b).toLowerCase();
+}
+
+function todoCompletedAt(patient: Patient, type: Todo['type']): string | undefined {
+  return patient.todos.find((todo) => todo.type === type && todo.status === 'completed')?.completedAt;
+}
+
+function appendVirtualDocument(
+  documents: DocumentRecord[],
+  patientId: string,
+  slug: string,
+  name: string,
+  uploadedAt?: string
+): DocumentRecord[] {
+  if (!uploadedAt || documents.some((document) => documentNameMatches(document.name, name))) {
+    return documents;
+  }
+  return [
+    ...documents,
+    {
+      id: `virtual-${patientId}-${slug}`,
+      name,
+      uploadedAt,
+      uploadedBy: 'patient',
+    },
+  ];
+}
+
+function documentsForDisplay(patient: Patient): DocumentRecord[] {
+  const roiServicesAt = todoCompletedAt(patient, 'sign-roi-services');
+  const roiMedicalAt = todoCompletedAt(patient, 'sign-roi-medical');
+  const healthQuestionnaireAt = todoCompletedAt(patient, 'complete-health-questionnaire');
+  const hasBothRois = Boolean(roiServicesAt && roiMedicalAt);
+  let documents = patient.documents;
+
+  if (hasBothRois) {
+    documents = appendVirtualDocument(
+      documents,
+      patient.id,
+      'roi-services',
+      'Services ROI',
+      roiServicesAt
+    );
+    documents = appendVirtualDocument(
+      documents,
+      patient.id,
+      'roi-medical',
+      'Medical Records ROI',
+      roiMedicalAt
+    );
+  }
+
+  if (patient.stage !== 'onboarding' && patient.stage !== 'initial-todos') {
+    documents = appendVirtualDocument(
+      documents,
+      patient.id,
+      'health-questionnaire-summary',
+      'Health Questionnaire Summary',
+      patient.screeningResponses?.completedAt ?? healthQuestionnaireAt
+    );
+  }
+
+  return documents;
+}
+
 function documentPreviewLines(document: DocumentRecord, patient: Patient): string[] {
   const name = displayDocumentName(document.name).toLowerCase();
   const patientName = `${patient.firstName} ${patient.lastName}`;
@@ -1364,7 +1430,8 @@ function DocumentsTab({
   const [documentName, setDocumentName] = useState('');
   const [selectedDocument, setSelectedDocument] = useState<DocumentRecord | null>(null);
   const groups: DocumentRecord['uploadedBy'][] = ['patient', 'clinic', 'staff'];
-  const sortedDocuments = [...documents].sort((a, b) => {
+  const displayDocuments = documentsForDisplay(patient);
+  const sortedDocuments = [...displayDocuments].sort((a, b) => {
     const rankDelta = documentSortRank(a.name) - documentSortRank(b.name);
     if (rankDelta !== 0) return rankDelta;
     return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
@@ -1384,7 +1451,7 @@ function DocumentsTab({
         <div className="flex items-baseline justify-between">
           <h3 className="text-base font-semibold text-slate-900">Documents</h3>
           <span className="text-xs text-slate-500">
-            {documents.length} file{documents.length === 1 ? '' : 's'}
+            {displayDocuments.length} file{displayDocuments.length === 1 ? '' : 's'}
           </span>
         </div>
 
@@ -1475,7 +1542,6 @@ function DocumentCategorySection({
             <DocumentRow
               key={document.id}
               document={document}
-              sourceLabel={title}
               onView={() => onView(document)}
             />
           ))}
@@ -1488,11 +1554,9 @@ function DocumentCategorySection({
 function DocumentRow({
   document,
   onView,
-  sourceLabel,
 }: {
   document: DocumentRecord;
   onView: () => void;
-  sourceLabel: string;
 }) {
   return (
     <li className="flex flex-col gap-3 bg-white px-4 py-3 transition hover:bg-[#f5faff] sm:flex-row sm:items-center sm:justify-between">
@@ -1503,9 +1567,6 @@ function DocumentRow({
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-slate-900">
             {displayDocumentName(document.name)}
-          </p>
-          <p className="truncate text-xs text-slate-500">
-            {sourceLabel} · Submitted {relativeTime(document.uploadedAt)}
           </p>
         </div>
       </div>
