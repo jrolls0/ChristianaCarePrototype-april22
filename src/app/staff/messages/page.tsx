@@ -549,13 +549,19 @@ function ComposeModal({
   const [tab, setTab] = useState<InboxTab>('patient');
   const [patientId, setPatientId] = useState<string>(patients[0]?.id ?? '');
   const [body, setBody] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   const selected = patients.find((p) => p.id === patientId) ?? null;
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!patientId || !body.trim()) return;
-    onSend(patientId, tab, body.trim());
+    const trimmed = body.trim();
+    if (!patientId || (trimmed.length === 0 && attachments.length === 0)) return;
+    onSend(patientId, tab, appendAttachmentSummary(trimmed, attachments));
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((previous) => previous.filter((attachment) => attachment.id !== id));
   }
 
   return (
@@ -650,6 +656,27 @@ function ComposeModal({
             />
           </label>
 
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60">
+            <div className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Documents
+                </p>
+                <p className="text-xs text-slate-500">
+                  Attach PDFs, images, or Word documents to this message.
+                </p>
+              </div>
+              <AttachButton
+                onAttach={(next) => setAttachments((previous) => [...previous, ...next])}
+              />
+            </div>
+            <AttachmentChips
+              attachments={attachments}
+              onRemove={removeAttachment}
+              className="px-3 pb-3 pt-0"
+            />
+          </div>
+
           <div className="flex items-center justify-end gap-2 pt-1">
             <button
               type="button"
@@ -660,7 +687,7 @@ function ComposeModal({
             </button>
             <button
               type="submit"
-              disabled={!body.trim() || !patientId}
+              disabled={(!body.trim() && attachments.length === 0) || !patientId}
               className="inline-flex items-center gap-1.5 rounded-xl bg-[#3399e6] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a66cc] disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Send className="h-4 w-4" />
