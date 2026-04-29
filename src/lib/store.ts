@@ -36,8 +36,21 @@ const normalizeUsername = (value: string) => value.trim().toLowerCase();
 const SERVICES_ROI_DOCUMENT = 'Services ROI';
 const MEDICAL_ROI_DOCUMENT = 'Medical Records ROI';
 
-function hasDocumentNamed(documents: DocumentRecord[], name: string): boolean {
-  return documents.some((document) => document.name.toLowerCase() === name.toLowerCase());
+function normalizedDocumentName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function hasDocumentNamed(
+  documents: DocumentRecord[],
+  name: string,
+  uploadedBy?: DocumentRecord['uploadedBy']
+): boolean {
+  const lookup = normalizedDocumentName(name);
+  return documents.some(
+    (document) =>
+      normalizedDocumentName(document.name) === lookup &&
+      (!uploadedBy || document.uploadedBy === uploadedBy)
+  );
 }
 
 function appendDocumentIfMissing(
@@ -47,7 +60,7 @@ function appendDocumentIfMissing(
   uploadedAt: string,
   uploadedBy: DocumentRecord['uploadedBy'] = 'patient'
 ): DocumentRecord[] {
-  if (hasDocumentNamed(documents, name)) return documents;
+  if (hasDocumentNamed(documents, name, uploadedBy)) return documents;
   return [
     ...documents,
     {
@@ -683,21 +696,21 @@ export const useStore = create<DemoState>()(
 
       uploadDocument: (patientId, name, source) => {
         const now = new Date().toISOString();
+        const trimmedName = name.trim();
+        if (!trimmedName) return;
         set({
           patients: get().patients.map((p) =>
             p.id !== patientId
               ? p
               : {
                   ...p,
-                  documents: [
-                    ...p.documents,
-                    {
-                      id: `doc-${patientId}-${nextIdSuffix()}`,
-                      name,
-                      uploadedAt: now,
-                      uploadedBy: source,
-                    },
-                  ],
+                  documents: appendDocumentIfMissing(
+                    p.documents,
+                    patientId,
+                    trimmedName,
+                    now,
+                    source
+                  ),
                   lastActivityAt: now,
                 }
           ),

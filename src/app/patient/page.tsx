@@ -879,19 +879,15 @@ export default function MobilePrototypePage() {
   function handleTodoComplete(todoId: string, screeningResponses?: ScreeningResponses) {
     const todo = currentPatient?.todos.find((t) => t.id === todoId);
     if (!todo) return;
-    if (todo.type === 'upload-government-id') {
-      uploadDocumentAction(patientId, 'Government ID (Front)', 'patient');
-    } else if (todo.type === 'upload-insurance-card') {
-      uploadDocumentAction(patientId, 'Insurance Card (Front)', 'patient');
-      uploadDocumentAction(patientId, 'Insurance Card (Back)', 'patient');
-    } else if (todo.type === 'complete-health-questionnaire' && screeningResponses) {
+    if (todo.type === 'complete-health-questionnaire' && screeningResponses) {
       saveScreeningResponsesAction(patientId, screeningResponses);
-    } else if (todo.type === 'custom' && todo.documentRequests?.length) {
-      todo.documentRequests.forEach((req) => {
-        uploadDocumentAction(patientId, req.title, 'patient');
-      });
     }
     completeTodoAction(patientId, todoId);
+  }
+
+  function handleTodoDocumentUpload(documentName: string) {
+    if (!patientId) return;
+    uploadDocumentAction(patientId, documentName, 'patient');
   }
 
   function handleOpenUnreadMessage() {
@@ -1004,6 +1000,7 @@ export default function MobilePrototypePage() {
                   completedTodos={completedTodos}
                   displayName={displayName}
                   onCompleteTodo={handleTodoComplete}
+                  onDocumentUpload={handleTodoDocumentUpload}
                   onOpenUnreadMessage={handleOpenUnreadMessage}
                   pendingTodos={pendingTodos}
                   patient={currentPatient}
@@ -2180,6 +2177,7 @@ type HomeTabProps = {
   completedTodos: MockTodo[];
   displayName: string;
   onCompleteTodo: (todoId: string, screeningResponses?: ScreeningResponses) => void;
+  onDocumentUpload: (documentName: string) => void;
   onOpenUnreadMessage: () => void;
   pendingTodos: MockTodo[];
   patient: StorePatient | null;
@@ -2189,6 +2187,7 @@ function HomeTab({
   completedTodos,
   displayName,
   onCompleteTodo,
+  onDocumentUpload,
   onOpenUnreadMessage,
   pendingTodos,
   patient,
@@ -2226,11 +2225,13 @@ function HomeTab({
     return (
       <div className="space-y-4">
         <TodoTaskWorkspace
+          documents={patient?.documents ?? []}
           onClose={() => setActiveTodoId(null)}
           onComplete={(screeningResponses) => {
             onCompleteTodo(activeTodo.id, screeningResponses);
             setActiveTodoId(null);
           }}
+          onDocumentUpload={onDocumentUpload}
           todo={activeTodo}
         />
       </div>
@@ -2375,19 +2376,37 @@ function TodoRow({
 }
 
 function TodoTaskWorkspace({
+  documents,
   onClose,
   onComplete,
+  onDocumentUpload,
   todo,
 }: {
+  documents: StorePatient['documents'];
   onClose: () => void;
   onComplete: (screeningResponses?: ScreeningResponses) => void;
+  onDocumentUpload: (documentName: string) => void;
   todo: MockTodo;
 }) {
   if (todo.type === 'governmentIdUpload') {
-    return <GovernmentIdTaskCard onClose={onClose} onComplete={onComplete} />;
+    return (
+      <GovernmentIdTaskCard
+        documents={documents}
+        onClose={onClose}
+        onComplete={onComplete}
+        onDocumentUpload={onDocumentUpload}
+      />
+    );
   }
   if (todo.type === 'insuranceCardUpload') {
-    return <InsuranceCardTaskCard onClose={onClose} onComplete={onComplete} />;
+    return (
+      <InsuranceCardTaskCard
+        documents={documents}
+        onClose={onClose}
+        onComplete={onComplete}
+        onDocumentUpload={onDocumentUpload}
+      />
+    );
   }
   if (todo.type === 'carePartnerInvite') {
     return <CarePartnerInviteTaskCard onClose={onClose} onComplete={onComplete} />;
@@ -2396,22 +2415,49 @@ function TodoTaskWorkspace({
     return <EducationTaskCard onClose={onClose} onComplete={onComplete} />;
   }
   if (todo.type === 'customStaffTodo') {
-    return <CustomStaffTaskCard onClose={onClose} onComplete={onComplete} todo={todo} />;
+    return (
+      <CustomStaffTaskCard
+        documents={documents}
+        onClose={onClose}
+        onComplete={onComplete}
+        onDocumentUpload={onDocumentUpload}
+        todo={todo}
+      />
+    );
   }
   return <HealthQuestionnaireTaskCard onClose={onClose} onComplete={onComplete} />;
 }
 
+function hasPatientUploadedDocument(
+  documents: StorePatient['documents'],
+  documentName: string
+) {
+  const lookup = documentName.trim().toLowerCase();
+  return documents.some((document) => document.name.trim().toLowerCase() === lookup);
+}
+
 function CustomStaffTaskCard({
+  documents,
   onClose,
   onComplete,
+  onDocumentUpload,
   todo,
 }: {
+  documents: StorePatient['documents'];
   onClose: () => void;
   onComplete: () => void;
+  onDocumentUpload: (documentName: string) => void;
   todo: MockTodo;
 }) {
   const docRequests = todo.documentRequests ?? [];
-  const [uploadedIds, setUploadedIds] = useState<Set<string>>(new Set());
+  const [uploadedIds, setUploadedIds] = useState<Set<string>>(
+    () =>
+      new Set(
+        docRequests
+          .filter((req) => hasPatientUploadedDocument(documents, req.title))
+          .map((req) => req.id)
+      )
+  );
   const allUploaded =
     docRequests.length === 0 ||
     docRequests.every((req) => uploadedIds.has(req.id));
@@ -2443,13 +2489,14 @@ function CustomStaffTaskCard({
           helperText={req.description || 'Tap below to simulate uploading this document.'}
           buttonLabel="Simulate Upload"
           isUploaded={uploadedIds.has(req.id)}
-          onSimulateUpload={() =>
+          onSimulateUpload={() => {
+            onDocumentUpload(req.title);
             setUploadedIds((prev) => {
               const next = new Set(prev);
               next.add(req.id);
               return next;
-            })
-          }
+            });
+          }}
         />
       ))}
 
@@ -2651,8 +2698,20 @@ function SimulatedUploadCard({
   );
 }
 
-function GovernmentIdTaskCard({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
-  const [frontUploaded, setFrontUploaded] = useState(false);
+function GovernmentIdTaskCard({
+  documents,
+  onClose,
+  onComplete,
+  onDocumentUpload,
+}: {
+  documents: StorePatient['documents'];
+  onClose: () => void;
+  onComplete: () => void;
+  onDocumentUpload: (documentName: string) => void;
+}) {
+  const [frontUploaded, setFrontUploaded] = useState(() =>
+    hasPatientUploadedDocument(documents, 'Government ID (Front)')
+  );
 
   return (
     <TodoWorkspaceShell
@@ -2665,7 +2724,10 @@ function GovernmentIdTaskCard({ onClose, onComplete }: { onClose: () => void; on
         helperText="Accepted formats: JPG, PNG, PDF."
         buttonLabel="Simulate Front Upload"
         isUploaded={frontUploaded}
-        onSimulateUpload={() => setFrontUploaded(true)}
+        onSimulateUpload={() => {
+          onDocumentUpload('Government ID (Front)');
+          setFrontUploaded(true);
+        }}
       />
 
       <button
@@ -2682,9 +2744,23 @@ function GovernmentIdTaskCard({ onClose, onComplete }: { onClose: () => void; on
   );
 }
 
-function InsuranceCardTaskCard({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
-  const [frontUploaded, setFrontUploaded] = useState(false);
-  const [backUploaded, setBackUploaded] = useState(false);
+function InsuranceCardTaskCard({
+  documents,
+  onClose,
+  onComplete,
+  onDocumentUpload,
+}: {
+  documents: StorePatient['documents'];
+  onClose: () => void;
+  onComplete: () => void;
+  onDocumentUpload: (documentName: string) => void;
+}) {
+  const [frontUploaded, setFrontUploaded] = useState(() =>
+    hasPatientUploadedDocument(documents, 'Insurance Card (Front)')
+  );
+  const [backUploaded, setBackUploaded] = useState(() =>
+    hasPatientUploadedDocument(documents, 'Insurance Card (Back)')
+  );
   const canComplete = frontUploaded && backUploaded;
 
   return (
@@ -2698,14 +2774,20 @@ function InsuranceCardTaskCard({ onClose, onComplete }: { onClose: () => void; o
         helperText="Capture policy number and member name clearly."
         buttonLabel="Simulate Front Upload"
         isUploaded={frontUploaded}
-        onSimulateUpload={() => setFrontUploaded(true)}
+        onSimulateUpload={() => {
+          onDocumentUpload('Insurance Card (Front)');
+          setFrontUploaded(true);
+        }}
       />
       <SimulatedUploadCard
         title="Insurance Card (Back)"
         helperText="Include claim/billing and support phone details."
         buttonLabel="Simulate Back Upload"
         isUploaded={backUploaded}
-        onSimulateUpload={() => setBackUploaded(true)}
+        onSimulateUpload={() => {
+          onDocumentUpload('Insurance Card (Back)');
+          setBackUploaded(true);
+        }}
       />
 
       <button
