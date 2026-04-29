@@ -1259,7 +1259,6 @@ function documentSortRank(name: string): number {
   if (normalized.includes('government id')) return 10;
   if (normalized.includes('insurance card (front)')) return 20;
   if (normalized.includes('insurance card (back)')) return 30;
-  if (normalized.includes('health questionnaire')) return 40;
   if (normalized.includes('services roi')) return 50;
   if (normalized.includes('medical records roi')) return 60;
   return 100;
@@ -1297,7 +1296,6 @@ function appendVirtualDocument(
 function documentsForDisplay(patient: Patient): DocumentRecord[] {
   const roiServicesAt = todoCompletedAt(patient, 'sign-roi-services');
   const roiMedicalAt = todoCompletedAt(patient, 'sign-roi-medical');
-  const healthQuestionnaireAt = todoCompletedAt(patient, 'complete-health-questionnaire');
   const hasBothRois = Boolean(roiServicesAt && roiMedicalAt);
   let documents = patient.documents;
 
@@ -1318,17 +1316,9 @@ function documentsForDisplay(patient: Patient): DocumentRecord[] {
     );
   }
 
-  if (patient.stage !== 'onboarding' && patient.stage !== 'initial-todos') {
-    documents = appendVirtualDocument(
-      documents,
-      patient.id,
-      'health-questionnaire-summary',
-      'Health Questionnaire Summary',
-      patient.screeningResponses?.completedAt ?? healthQuestionnaireAt
-    );
-  }
-
-  return documents;
+  return documents.filter(
+    (document) => !displayDocumentName(document.name).toLowerCase().includes('health questionnaire')
+  );
 }
 
 function documentPreviewLines(document: DocumentRecord, patient: Patient): string[] {
@@ -1374,23 +1364,6 @@ function documentPreviewLines(document: DocumentRecord, patient: Patient): strin
       'Wilmington, DE 19801',
       '--------------------------------',
       'For demo viewing only.',
-    ];
-  }
-  if (name.includes('health questionnaire')) {
-    const responses = patient.screeningResponses;
-    return [
-      'HEALTH QUESTIONNAIRE SUMMARY',
-      '--------------------------------',
-      `Patient: ${patientName}`,
-      `Completed: ${formatDate(responses?.completedAt ?? document.uploadedAt)}`,
-      `Currently on dialysis: ${valueLabel(responses?.onDialysis)}`,
-      `Most recent eGFR: ${
-        responses?.egfrUnknown ? "Patient doesn't know" : responses?.egfr ?? 'Not provided'
-      }`,
-      `Uses supplemental oxygen: ${valueLabel(responses?.usesSupplementalOxygen)}`,
-      `Recent heart surgery: ${valueLabel(responses?.cardiacSurgeryLast6Months)}`,
-      `Active cancer treatment: ${valueLabel(responses?.activeCancer)}`,
-      `Open wounds: ${valueLabel(responses?.hasOpenWounds)}`,
     ];
   }
   if (name.includes('roi')) {

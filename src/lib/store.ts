@@ -35,7 +35,6 @@ const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
 const SERVICES_ROI_DOCUMENT = 'Services ROI';
 const MEDICAL_ROI_DOCUMENT = 'Medical Records ROI';
-const HEALTH_QUESTIONNAIRE_DOCUMENT = 'Health Questionnaire Summary';
 
 function hasDocumentNamed(documents: DocumentRecord[], name: string): boolean {
   return documents.some((document) => document.name.toLowerCase() === name.toLowerCase());
@@ -81,22 +80,6 @@ function withRoiDocuments(patient: Patient, now: string): Patient {
     roiMedical?.completedAt ?? patient.roiSignedAt ?? now
   );
   return { ...patient, documents };
-}
-
-function withHealthQuestionnaireDocument(patient: Patient, now: string): Patient {
-  const healthTodo = patient.todos.find(
-    (todo) => todo.type === 'complete-health-questionnaire' && todo.status === 'completed'
-  );
-  if (!healthTodo) return patient;
-  return {
-    ...patient,
-    documents: appendDocumentIfMissing(
-      patient.documents,
-      patient.id,
-      HEALTH_QUESTIONNAIRE_DOCUMENT,
-      patient.screeningResponses?.completedAt ?? healthTodo.completedAt ?? now
-    ),
-  };
 }
 
 function latestIso(values: Array<string | undefined>): string | undefined {
@@ -190,13 +173,13 @@ function initialTodosComplete(todos: Todo[]): boolean {
 function advanceAfterInitialTodos(patient: Patient, now: string): Patient {
   if (normalizePatientStage(patient.stage) !== 'initial-todos') return patient;
   if (!initialTodosComplete(patient.todos)) return patient;
-  return withHealthQuestionnaireDocument({
+  return {
     ...patient,
     stage: 'initial-screening',
     daysInStage: 0,
     isStuck: false,
     lastActivityAt: now,
-  }, now);
+  };
 }
 
 const newSafeStorage = () =>

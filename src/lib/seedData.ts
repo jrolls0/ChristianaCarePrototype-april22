@@ -55,16 +55,6 @@ const completedAtFor = (patient: Patient, type: Todo['type']): string | undefine
 
 const SERVICES_ROI_DOCUMENT = 'Services ROI';
 const MEDICAL_ROI_DOCUMENT = 'Medical Records ROI';
-const HEALTH_QUESTIONNAIRE_DOCUMENT = 'Health Questionnaire Summary';
-
-const STAGES_WITH_HEALTH_QUESTIONNAIRE_DOCUMENT = new Set<Patient['stage']>([
-  'initial-screening',
-  'financial-screening',
-  'records-clinical-review',
-  'final-decision',
-  'education',
-  'scheduling',
-]);
 
 const buildSeedDocAt = (
   patientId: string,
@@ -85,7 +75,6 @@ const workflowDocumentsFor = (patient: Patient): DocumentRecord[] => {
   const medicalRoiAt = completedAtFor(patient, 'sign-roi-medical');
   const govIdAt = completedAtFor(patient, 'upload-government-id');
   const insuranceAt = completedAtFor(patient, 'upload-insurance-card');
-  const healthAt = completedAtFor(patient, 'complete-health-questionnaire');
 
   if (govIdAt) {
     documents.push(buildSeedDocAt(patient.id, 'gov-id-front', 'Government ID (Front)', govIdAt));
@@ -93,11 +82,6 @@ const workflowDocumentsFor = (patient: Patient): DocumentRecord[] => {
   if (insuranceAt) {
     documents.push(buildSeedDocAt(patient.id, 'insurance-front', 'Insurance Card (Front)', insuranceAt));
     documents.push(buildSeedDocAt(patient.id, 'insurance-back', 'Insurance Card (Back)', insuranceAt));
-  }
-  if (healthAt && STAGES_WITH_HEALTH_QUESTIONNAIRE_DOCUMENT.has(patient.stage)) {
-    documents.push(
-      buildSeedDocAt(patient.id, 'health-questionnaire-summary', HEALTH_QUESTIONNAIRE_DOCUMENT, healthAt)
-    );
   }
   if (servicesRoiAt && medicalRoiAt) {
     documents.push(buildSeedDocAt(patient.id, 'roi-services-document', SERVICES_ROI_DOCUMENT, servicesRoiAt));
