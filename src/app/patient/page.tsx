@@ -1385,10 +1385,11 @@ function RegistrationScreen({
     } else if (findPatientByEmail(email.trim())?.portalAccount) {
       errors.email = 'An account already exists for this email. Use Sign In with the password you created.';
     }
-    if (selectedDialysisClinic > 0 && selectedSocialWorker === 0) {
+    const requiresClinicAssignments = !matchedReferral && selectedDialysisClinic > 0;
+    if (requiresClinicAssignments && selectedSocialWorker === 0) {
       errors.socialWorker = 'Select your assigned social worker';
     }
-    if (selectedDialysisClinic > 0 && selectedNephrologist === 0) {
+    if (requiresClinicAssignments && selectedNephrologist === 0) {
       errors.nephrologist = 'Select your nephrologist';
     }
     if (!password) {
