@@ -725,7 +725,11 @@ export const useStore = create<DemoState>()(
         set({
           patients: get().patients.map((p) => {
             if (p.id !== patientId) return p;
-            const nextStage = getNextPatientStage(p.stage);
+            const currentStage = normalizePatientStage(p.stage);
+            if (currentStage === 'onboarding' || currentStage === 'initial-todos') {
+              return p;
+            }
+            const nextStage = getNextPatientStage(currentStage);
             if (!nextStage) return p;
             return {
               ...p,

@@ -176,13 +176,11 @@ function hasEmergencyConsent(patient: Patient): boolean {
 
 function nextActionFor(patient: Patient): string {
   if (patient.endReferral) return 'Referral ended';
-  if (patient.isStuck) return 'Unblock current stage';
   if (patient.referralSource === 'self' && !patient.referringClinic) return 'Capture clinic info';
+  if (patient.stage === 'initial-screening') return 'Review screening responses';
+  if (patient.isStuck) return 'Unblock current stage';
   const pendingTodo = patient.todos.find((todo) => todo.status === 'pending');
   if (pendingTodo) return `Waiting on ${patient.firstName}: ${pendingTodo.title}`;
-  if (!patient.screeningResponses && patient.stage === 'initial-screening') {
-    return 'Review health questionnaire status';
-  }
   if (patient.stage === 'final-decision') return 'Prepare final decision review';
   return 'Open case';
 }
@@ -670,6 +668,7 @@ function WorkflowProgress({
   const stageCount = VISIBLE_PATIENT_STAGES.length;
   const progressPct = stageCount > 1 ? (currentIndex / (stageCount - 1)) * 100 : 100;
   const disabled = Boolean(patient.endReferral || !nextStage);
+  const patientOwnedStage = patient.stage === 'onboarding' || patient.stage === 'initial-todos';
 
   return (
     <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -680,19 +679,26 @@ function WorkflowProgress({
             Stage {currentIndex + 1} of {VISIBLE_PATIENT_STAGES.length}: {PATIENT_STAGE_LABEL[patient.stage]}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onAdvance}
-          disabled={disabled}
-          className="inline-flex w-fit items-center gap-2 rounded-xl bg-[#1a66cc] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1558ad] disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          <CheckCircle2 className="h-4 w-4" />
-          {patient.endReferral
-            ? 'Referral ended'
-            : nextStage
-              ? `Mark stage complete → ${PATIENT_STAGE_LABEL[nextStage]}`
-              : 'Final stage'}
-        </button>
+        {patientOwnedStage ? (
+          <div className="inline-flex w-fit items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600">
+            <Clock className="h-4 w-4" />
+            Patient completes this step in the portal
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onAdvance}
+            disabled={disabled}
+            className="inline-flex w-fit items-center gap-2 rounded-xl bg-[#1a66cc] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1558ad] disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            {patient.endReferral
+              ? 'Referral ended'
+              : nextStage
+                ? `Mark stage complete → ${PATIENT_STAGE_LABEL[nextStage]}`
+                : 'Final stage'}
+          </button>
+        )}
       </div>
 
       <div className="mt-5 overflow-x-auto pb-1">

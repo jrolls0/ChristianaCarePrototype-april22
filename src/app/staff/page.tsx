@@ -58,12 +58,20 @@ function hasUnreadStaffMessage(patient: Patient): boolean {
   return patient.messages.some((m) => !m.readByStaff && m.fromRole !== 'staff');
 }
 
+function needsStaffAction(patient: Patient): boolean {
+  return (
+    patient.isStuck ||
+    isSelfSignupNeedingFollowup(patient) ||
+    patient.stage === 'initial-screening'
+  );
+}
+
 function matchesPriority(patient: Patient, filter: PriorityFilter, now: number): boolean {
   switch (filter) {
     case 'all':
       return true;
     case 'stuck':
-      return patient.isStuck;
+      return needsStaffAction(patient);
     case 'new':
       return isNewThisWeek(patient, now);
     case 'self-signups':
@@ -82,10 +90,21 @@ function daysInStageTone(days: number) {
 }
 
 function nextAction(patient: Patient): string {
-  if (patient.isStuck) return 'Unblock case';
   if (isSelfSignupNeedingFollowup(patient)) return 'Capture clinic info';
+  if (patient.stage === 'initial-screening') return 'Review screening responses';
+  if (patient.isStuck) return 'Unblock case';
   if (hasUnreadStaffMessage(patient)) return 'Reply in Inbox';
   return 'Open case';
+}
+
+function needsActionDescription(patient: Patient): string {
+  if (isSelfSignupNeedingFollowup(patient)) {
+    return `${patient.firstName} ${patient.lastName} · clinic info`;
+  }
+  if (patient.stage === 'initial-screening') {
+    return `${patient.firstName} ${patient.lastName} · screening review`;
+  }
+  return `${patient.firstName} ${patient.lastName} · ${patient.daysInStage}d`;
 }
 
 function searchText(patient: Patient): string {
@@ -148,8 +167,8 @@ export default function StaffDashboardPage() {
   );
 
   const activeCases = patients.length;
-  const stuckPatients = useMemo(() => patients.filter((p) => p.isStuck), [patients]);
-  const stuckCount = stuckPatients.length;
+  const needsActionPatients = useMemo(() => patients.filter(needsStaffAction), [patients]);
+  const needsActionCount = needsActionPatients.length;
   const newThisWeek = useMemo(
     () => patients.filter((p) => isNewThisWeek(p, now)).length,
     [patients, now]
@@ -193,8 +212,8 @@ export default function StaffDashboardPage() {
             Case Queue
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            {activeCases} active {activeCases === 1 ? 'case' : 'cases'} · {stuckCount}{' '}
-            {stuckCount === 1 ? 'needs' : 'need'} attention
+            {activeCases} active {activeCases === 1 ? 'case' : 'cases'} · {needsActionCount}{' '}
+            {needsActionCount === 1 ? 'needs' : 'need'} staff action
           </p>
         </div>
 
@@ -220,14 +239,14 @@ export default function StaffDashboardPage() {
             />
             <PriorityCard
               label="Needs action"
-              value={stuckCount}
+              value={needsActionCount}
               description={
-                stuckCount > 0
-                  ? stuckPatients
+                needsActionCount > 0
+                  ? needsActionPatients
                       .slice(0, 2)
-                      .map((p) => `${p.firstName} ${p.lastName} · ${p.daysInStage}d`)
+                      .map(needsActionDescription)
                       .join(', ')
-                  : 'All cases moving'
+                  : 'No staff actions pending'
               }
               icon={AlertTriangle}
               tone="red"
