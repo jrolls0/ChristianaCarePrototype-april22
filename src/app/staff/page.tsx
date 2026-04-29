@@ -122,15 +122,15 @@ function SourceCell({ patient }: { patient: Patient }) {
     return (
       <span
         className={clsx(
-          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset',
+          'inline-flex max-w-full items-center gap-1.5 truncate whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset',
           noFollowup
             ? 'bg-amber-50 text-amber-800 ring-amber-200'
             : 'bg-violet-50 text-violet-700 ring-violet-200'
         )}
       >
-        <UserPlus className="h-3 w-3" />
-        Self-signup
-        <span className="font-normal text-slate-500">
+        <UserPlus className="h-3 w-3 shrink-0" />
+        <span className="shrink-0">Self-signup</span>
+        <span className="min-w-0 truncate font-normal text-slate-500">
           · {noFollowup ? 'needs follow-up' : patient.referringClinic}
         </span>
       </span>

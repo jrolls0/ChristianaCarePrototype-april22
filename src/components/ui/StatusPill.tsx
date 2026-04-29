@@ -12,7 +12,7 @@ export function StatusPill({ stage, className }: StatusPillProps) {
   return (
     <span
       className={clsx(
-        'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset',
+        'inline-flex max-w-full shrink-0 items-center truncate whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset',
         PATIENT_STAGE_TONE[normalizedStage],
         className
       )}
