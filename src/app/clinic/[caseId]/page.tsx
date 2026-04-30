@@ -201,11 +201,11 @@ function PatientHeader({ patient }: { patient: Patient }) {
         </div>
       </div>
 
-      <div className="grid gap-x-10 gap-y-6 px-5 py-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-x-10 gap-y-6 px-5 py-5 md:grid-cols-2 2xl:grid-cols-4 2xl:gap-x-12">
         <HeaderColumn title="Patient Contact">
           <InfoRow label="DOB">{formatDob(patient.dob)}</InfoRow>
-          <InfoRow label="Phone">{patient.phone || 'Not provided'}</InfoRow>
-          <InfoRow label="Email">{patient.email}</InfoRow>
+          <InfoRow label="Phone" nowrap>{patient.phone || 'Not provided'}</InfoRow>
+          <InfoRow label="Email" nowrap>{patient.email}</InfoRow>
           <InfoRow label="Preferred language">{patient.preferredLanguage}</InfoRow>
         </HeaderColumn>
 
@@ -214,6 +214,8 @@ function PatientHeader({ patient }: { patient: Patient }) {
           <InfoRow label="Nephrologist">{patient.nephrologistName ?? 'Not assigned'}</InfoRow>
           <InfoRow label="Referral date">{formatDate(patient.referralDate)}</InfoRow>
         </HeaderColumn>
+
+        <EmergencyContactColumn patient={patient} />
 
         <HeaderColumn title="ROI Status">
           <ConsentRow checked={isRoiSigned(patient, 'sign-roi-services')} label="Services ROI" />
@@ -224,6 +226,29 @@ function PatientHeader({ patient }: { patient: Patient }) {
         </HeaderColumn>
       </div>
     </section>
+  );
+}
+
+function EmergencyContactColumn({ patient }: { patient: Patient }) {
+  const contact = patient.emergencyContact;
+  return (
+    <HeaderColumn title="Emergency Contact">
+      {contact ? (
+        <>
+          <InfoRow label="Name">{contact.name}</InfoRow>
+          <InfoRow label="Relationship">{contact.relationship || 'Not provided'}</InfoRow>
+          <InfoRow label="Phone">{contact.phone || 'Not provided'}</InfoRow>
+          <InfoRow label="Email" nowrap>{contact.email || 'Not provided'}</InfoRow>
+        </>
+      ) : (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3">
+          <p className="text-sm font-semibold text-slate-700">Not provided yet</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Optional patient to-do not completed.
+          </p>
+        </div>
+      )}
+    </HeaderColumn>
   );
 }
 
@@ -238,11 +263,27 @@ function HeaderColumn({ children, title }: { children: React.ReactNode; title: s
   );
 }
 
-function InfoRow({ children, label }: { children: React.ReactNode; label: string }) {
+function InfoRow({
+  children,
+  label,
+  nowrap = false,
+}: {
+  children: React.ReactNode;
+  label: string;
+  nowrap?: boolean;
+}) {
   return (
-    <div className="grid grid-cols-[11rem_minmax(0,1fr)] gap-3 text-sm">
+    <div className="grid grid-cols-[8.75rem_minmax(0,1fr)] gap-2 text-sm">
       <dt className="whitespace-nowrap text-slate-500">{label}</dt>
-      <dd className="min-w-0 break-words font-medium text-slate-900">{children}</dd>
+      <dd
+        className={clsx(
+          'min-w-0 font-medium text-slate-900',
+          nowrap ? 'whitespace-nowrap' : 'break-words'
+        )}
+        title={typeof children === 'string' ? children : undefined}
+      >
+        {children}
+      </dd>
     </div>
   );
 }
