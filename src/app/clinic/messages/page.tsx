@@ -579,6 +579,7 @@ function ComposeModal({
   const [patientId, setPatientId] = useState<string>(patients[0]?.id ?? '');
   const [body, setBody] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const selected = patients.find((patient) => patient.id === patientId) ?? null;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -647,7 +648,7 @@ function ComposeModal({
 
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Referral
+              {channel === 'transplant-center' ? 'Regarding Patient' : 'Patient'}
             </span>
             <select
               value={patientId}
@@ -660,6 +661,17 @@ function ComposeModal({
                 </option>
               ))}
             </select>
+            {selected && channel === 'transplant-center' && (
+              <p className="text-[11px] text-slate-500">
+                This message goes to ChristianaCare about {selected.firstName}{' '}
+                {selected.lastName}.
+              </p>
+            )}
+            {selected && channel === 'patient' && (
+              <p className="text-[11px] text-slate-500">
+                This message goes directly to {selected.firstName} {selected.lastName}.
+              </p>
+            )}
           </label>
 
           <label className="block space-y-1.5">

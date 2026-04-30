@@ -683,7 +683,7 @@ function ComposeModal({
 
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Patient / Referral
+              {tab === 'clinic' ? 'Regarding Patient' : 'Patient'}
             </span>
             <select
               value={patientId}
@@ -699,9 +699,13 @@ function ComposeModal({
             </select>
             {selected && tab === 'clinic' && (
               <p className="text-[11px] text-slate-500">
-                Goes to the patient-specific clinic thread for {selected.firstName}{' '}
-                {selected.lastName} at{' '}
-                {selected.referringClinic ?? 'their clinic'}.
+                This message goes to {selected.referringClinic ?? 'the dialysis clinic'} about{' '}
+                {selected.firstName} {selected.lastName}.
+              </p>
+            )}
+            {selected && tab === 'patient' && (
+              <p className="text-[11px] text-slate-500">
+                This message goes directly to {selected.firstName} {selected.lastName}.
               </p>
             )}
           </label>
