@@ -419,8 +419,8 @@ function PatientIdentity({ patient }: { patient: Patient }) {
         {patient.lastName[0]}
       </div>
       <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2 font-semibold text-slate-900">
-          <span className="min-w-0 truncate">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-semibold text-slate-900">
+          <span className="min-w-[8rem] max-w-full shrink-0 truncate">
             {patient.firstName} {patient.lastName}
           </span>
           {patient.stage === 'initial-screening' && <ScreeningReviewBadge />}
