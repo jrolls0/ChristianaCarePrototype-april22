@@ -579,7 +579,7 @@ function PatientHeader({ patient }: { patient: Patient }) {
         </div>
       </div>
 
-      <div className="grid gap-x-10 gap-y-6 px-5 py-5 md:grid-cols-2 xl:grid-cols-4 2xl:gap-x-12">
+      <div className="grid gap-x-10 gap-y-6 px-5 py-5 md:grid-cols-2 2xl:grid-cols-4 2xl:gap-x-12">
         <HeaderColumn title="Patient Contact">
           <InfoRow label="DOB">{formatDob(patient.dob)}</InfoRow>
           <InfoRow label="Phone">{patient.phone || 'Not provided'}</InfoRow>
@@ -668,14 +668,7 @@ function InfoRow({
   children: ReactNode;
 }) {
   return (
-    <div
-      className={clsx(
-        'grid text-sm',
-        nowrap
-          ? 'grid-cols-1 gap-0.5'
-          : 'grid-cols-[8rem_minmax(0,1fr)] gap-3 xl:grid-cols-1 xl:gap-0.5 2xl:grid-cols-[7rem_minmax(0,1fr)] 2xl:gap-3'
-      )}
-    >
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2 text-sm xl:grid-cols-[5.75rem_minmax(0,1fr)] 2xl:grid-cols-[6.25rem_minmax(0,1fr)]">
       <dt className="text-slate-500">{label}</dt>
       <dd
         className={clsx(
