@@ -210,7 +210,6 @@ function PatientHeader({ patient }: { patient: Patient }) {
         </HeaderColumn>
 
         <HeaderColumn title="Referral Details">
-          <InfoRow label="Dialysis clinic">{patient.referringClinic ?? 'Not assigned'}</InfoRow>
           <InfoRow label="Dialysis social worker">{patient.duswName ?? 'Not assigned'}</InfoRow>
           <InfoRow label="Nephrologist">{patient.nephrologistName ?? 'Not assigned'}</InfoRow>
           <InfoRow label="Referral date">{formatDate(patient.referralDate)}</InfoRow>
@@ -222,7 +221,6 @@ function PatientHeader({ patient }: { patient: Patient }) {
             checked={isRoiSigned(patient, 'sign-roi-medical')}
             label="Medical Records ROI"
           />
-          <InfoRow label="Current stage">{PATIENT_STAGE_LABEL[patient.stage]}</InfoRow>
         </HeaderColumn>
       </div>
     </section>
@@ -242,8 +240,8 @@ function HeaderColumn({ children, title }: { children: React.ReactNode; title: s
 
 function InfoRow({ children, label }: { children: React.ReactNode; label: string }) {
   return (
-    <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 text-sm">
-      <dt className="text-slate-500">{label}</dt>
+    <div className="grid grid-cols-[11rem_minmax(0,1fr)] gap-3 text-sm">
+      <dt className="whitespace-nowrap text-slate-500">{label}</dt>
       <dd className="min-w-0 break-words font-medium text-slate-900">{children}</dd>
     </div>
   );
@@ -334,8 +332,7 @@ function SummaryTab({ patient }: { patient: Patient }) {
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="text-base font-semibold text-slate-900">Referral summary</h3>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <SummaryMetric label="Current stage" value={PATIENT_STAGE_LABEL[patient.stage]} />
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
           <SummaryMetric label="Waiting on" value={waiting.label} />
           <SummaryMetric label="Last update" value={relativeTime(patient.lastActivityAt)} />
         </div>
