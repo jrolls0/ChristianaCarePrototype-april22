@@ -522,6 +522,22 @@ export const useStore = create<DemoState>()(
         });
       },
 
+      saveEmergencyContact: (patientId, contact) => {
+        const now = new Date().toISOString();
+        set({
+          patients: get().patients.map((p) =>
+            p.id !== patientId
+              ? p
+              : {
+                  ...p,
+                  emergencyContact: contact,
+                  emergencyContactConsent: contact.consented,
+                  lastActivityAt: now,
+                }
+          ),
+        });
+      },
+
       completeTodo: (patientId, todoId) => {
         const now = new Date().toISOString();
         set({

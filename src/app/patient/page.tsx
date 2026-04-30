@@ -51,6 +51,7 @@ import { useStore } from '../../lib/store';
 import { CLINIC_NAMES, findClinic } from '../../lib/clinicDirectory';
 import type {
   DocumentRequest as StoreDocumentRequest,
+  EmergencyContact as StoreEmergencyContact,
   Patient as StorePatient,
   PatientRegistrationResult,
   ScreeningResponses,
@@ -154,6 +155,7 @@ type RegistrationPayload = {
 
 type CarePartnerInvitePayload = {
   name: string;
+  relationship: string;
   email: string;
   phone: string;
   consentGiven: boolean;
@@ -667,6 +669,7 @@ export default function MobilePrototypePage() {
   const registerSelfAction = useStore((s) => s.registerSelf);
   const authenticatePatientAction = useStore((s) => s.authenticatePatient);
   const saveCommunicationConsentsAction = useStore((s) => s.saveCommunicationConsents);
+  const saveEmergencyContactAction = useStore((s) => s.saveEmergencyContact);
   const markOnboardingCompleteAction = useStore((s) => s.markOnboardingComplete);
   const setLastPatientTabAction = useStore((s) => s.setLastPatientTab);
   const saveScreeningResponsesAction = useStore((s) => s.saveScreeningResponses);
@@ -889,11 +892,29 @@ export default function MobilePrototypePage() {
     setShowCoordinatorIntro(false);
   }
 
-  function handleTodoComplete(todoId: string, screeningResponses?: ScreeningResponses) {
+  function saveEmergencyContactFromPayload(payload: CarePartnerInvitePayload) {
+    const contact: StoreEmergencyContact = {
+      name: payload.name,
+      relationship: payload.relationship,
+      email: payload.email,
+      phone: payload.phone,
+      consented: payload.consentGiven,
+    };
+    saveEmergencyContactAction(patientId, contact);
+  }
+
+  function handleTodoComplete(
+    todoId: string,
+    screeningResponses?: ScreeningResponses,
+    emergencyContact?: CarePartnerInvitePayload
+  ) {
     const todo = currentPatient?.todos.find((t) => t.id === todoId);
     if (!todo) return;
     if (todo.type === 'complete-health-questionnaire' && screeningResponses) {
       saveScreeningResponsesAction(patientId, screeningResponses);
+    }
+    if (todo.type === 'add-emergency-contact' && emergencyContact) {
+      saveEmergencyContactFromPayload(emergencyContact);
     }
     completeTodoAction(patientId, todoId);
   }
@@ -976,7 +997,8 @@ export default function MobilePrototypePage() {
             )}
             {onboardingStep === 'carePartnerPrompt' && (
               <CarePartnerPromptScreen
-                onInvite={() => {
+                onInvite={(payload) => {
+                  saveEmergencyContactFromPayload(payload);
                   handleEnterApp();
                 }}
                 onSkip={() => {
@@ -2032,6 +2054,7 @@ function CarePartnerPromptScreen({
   onSkip: () => void;
 }) {
   const [carePartnerName, setCarePartnerName] = useState('');
+  const [carePartnerRelationship, setCarePartnerRelationship] = useState('');
   const [carePartnerEmail, setCarePartnerEmail] = useState('');
   const [carePartnerPhone, setCarePartnerPhone] = useState('');
   const [consentGiven, setConsentGiven] = useState(false);
@@ -2041,6 +2064,7 @@ function CarePartnerPromptScreen({
   const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(carePartnerEmail.trim());
   const canInvite =
     carePartnerName.trim().length > 0 &&
+    carePartnerRelationship.trim().length > 0 &&
     carePartnerPhone.trim().length > 0 &&
     emailIsValid &&
     consentGiven &&
@@ -2058,6 +2082,7 @@ function CarePartnerPromptScreen({
       setIsSubmitting(false);
       onInvite({
         name: carePartnerName.trim(),
+        relationship: carePartnerRelationship.trim(),
         email: carePartnerEmail.trim(),
         phone: carePartnerPhone.trim(),
         consentGiven: true,
@@ -2085,6 +2110,16 @@ function CarePartnerPromptScreen({
               value={carePartnerName}
               onChange={(event) => setCarePartnerName(event.target.value)}
               placeholder="Enter full name"
+              className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+            />
+          </label>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Relationship</span>
+            <input
+              value={carePartnerRelationship}
+              onChange={(event) => setCarePartnerRelationship(event.target.value)}
+              placeholder="e.g. Spouse, daughter, brother"
               className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
             />
           </label>
@@ -2332,7 +2367,11 @@ function ConsentSection({ section }: { section: ConsentSectionData }) {
 type HomeTabProps = {
   completedTodos: MockTodo[];
   displayName: string;
-  onCompleteTodo: (todoId: string, screeningResponses?: ScreeningResponses) => void;
+  onCompleteTodo: (
+    todoId: string,
+    screeningResponses?: ScreeningResponses,
+    emergencyContact?: CarePartnerInvitePayload
+  ) => void;
   onDocumentUpload: (documentName: string) => void;
   onOpenUnreadMessage: () => void;
   pendingTodos: MockTodo[];
@@ -2383,8 +2422,8 @@ function HomeTab({
         <TodoTaskWorkspace
           documents={patient?.documents ?? []}
           onClose={() => setActiveTodoId(null)}
-          onComplete={(screeningResponses) => {
-            onCompleteTodo(activeTodo.id, screeningResponses);
+          onComplete={(screeningResponses, emergencyContact) => {
+            onCompleteTodo(activeTodo.id, screeningResponses, emergencyContact);
             setActiveTodoId(null);
           }}
           onDocumentUpload={onDocumentUpload}
@@ -2540,7 +2579,10 @@ function TodoTaskWorkspace({
 }: {
   documents: StorePatient['documents'];
   onClose: () => void;
-  onComplete: (screeningResponses?: ScreeningResponses) => void;
+  onComplete: (
+    screeningResponses?: ScreeningResponses,
+    emergencyContact?: CarePartnerInvitePayload
+  ) => void;
   onDocumentUpload: (documentName: string) => void;
   todo: MockTodo;
 }) {
@@ -2960,8 +3002,18 @@ function InsuranceCardTaskCard({
   );
 }
 
-function CarePartnerInviteTaskCard({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
+function CarePartnerInviteTaskCard({
+  onClose,
+  onComplete,
+}: {
+  onClose: () => void;
+  onComplete: (
+    screeningResponses?: ScreeningResponses,
+    emergencyContact?: CarePartnerInvitePayload
+  ) => void;
+}) {
   const [carePartnerName, setCarePartnerName] = useState('');
+  const [carePartnerRelationship, setCarePartnerRelationship] = useState('');
   const [carePartnerEmail, setCarePartnerEmail] = useState('');
   const [carePartnerPhone, setCarePartnerPhone] = useState('');
   const [consentGiven, setConsentGiven] = useState(false);
@@ -2969,7 +3021,11 @@ function CarePartnerInviteTaskCard({ onClose, onComplete }: { onClose: () => voi
 
   const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(carePartnerEmail.trim());
   const canComplete =
-    carePartnerName.trim().length > 0 && carePartnerPhone.trim().length > 0 && emailIsValid && consentGiven;
+    carePartnerName.trim().length > 0 &&
+    carePartnerRelationship.trim().length > 0 &&
+    carePartnerPhone.trim().length > 0 &&
+    emailIsValid &&
+    consentGiven;
 
   function handleCompleteCarePartnerTask() {
     if (!canComplete) {
@@ -2977,7 +3033,13 @@ function CarePartnerInviteTaskCard({ onClose, onComplete }: { onClose: () => voi
       return;
     }
     setErrorMessage('');
-    onComplete();
+    onComplete(undefined, {
+      name: carePartnerName.trim(),
+      relationship: carePartnerRelationship.trim(),
+      email: carePartnerEmail.trim(),
+      phone: carePartnerPhone.trim(),
+      consentGiven: true,
+    });
   }
 
   return (
@@ -2992,6 +3054,16 @@ function CarePartnerInviteTaskCard({ onClose, onComplete }: { onClose: () => voi
           value={carePartnerName}
           onChange={(event) => setCarePartnerName(event.target.value)}
           placeholder="Enter full name"
+          className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+        />
+      </label>
+
+      <label className="block space-y-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Relationship</span>
+        <input
+          value={carePartnerRelationship}
+          onChange={(event) => setCarePartnerRelationship(event.target.value)}
+          placeholder="e.g. Spouse, daughter, brother"
           className="h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
         />
       </label>

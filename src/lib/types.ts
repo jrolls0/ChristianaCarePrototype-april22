@@ -65,6 +65,7 @@ export interface DocumentRecord {
 
 export interface EmergencyContact {
   name: string;
+  relationship?: string;
   email: string;
   phone: string;
   consented: boolean;
@@ -204,6 +205,7 @@ export interface DemoState {
     patientId: string,
     consents: { emailConsent: boolean; smsConsent: boolean; phoneConsent: boolean }
   ) => void;
+  saveEmergencyContact: (patientId: string, contact: EmergencyContact) => void;
   markOnboardingComplete: (patientId: string) => void;
   setLastPatientTab: (tab: PatientTab) => void;
   completeTodo: (patientId: string, todoId: string) => void;

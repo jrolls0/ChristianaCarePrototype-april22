@@ -403,6 +403,7 @@ const buildMaria = (): Patient => {
     lastActivityAt: daysAgoIso(2),
     emergencyContact: {
       name: 'David Chen',
+      relationship: 'Spouse',
       email: 'david.chen@email.com',
       phone: '(302) 555-0193',
       consented: true,
@@ -494,6 +495,7 @@ const buildRobert = (): Patient => {
     lastActivityAt: daysAgoIso(1),
     emergencyContact: {
       name: 'Janet Williams',
+      relationship: 'Sister',
       email: 'janet.williams@email.com',
       phone: '(302) 555-0244',
       consented: true,
@@ -562,6 +564,7 @@ const buildLinda = (): Patient => {
     lastActivityAt: daysAgoIso(3),
     emergencyContact: {
       name: 'Carlos Rodriguez',
+      relationship: 'Brother',
       email: 'carlos.rodriguez@email.com',
       phone: '(302) 555-0317',
       consented: true,
@@ -631,6 +634,7 @@ const buildJames = (): Patient => {
     lastActivityAt: hoursAgoIso(1 * 24),
     emergencyContact: {
       name: 'Anita Patel',
+      relationship: 'Spouse',
       email: 'anita.patel@email.com',
       phone: '(302) 555-0428',
       consented: true,
@@ -761,6 +765,7 @@ const buildDavid = (): Patient => {
     lastActivityAt: hoursAgoIso(2 * 24 - 4),
     emergencyContact: {
       name: 'Grace Kim',
+      relationship: 'Daughter',
       email: 'grace.kim@email.com',
       phone: '(302) 555-0649',
       consented: true,
@@ -838,6 +843,7 @@ const buildElaine = (): Patient => {
     lastActivityAt: daysAgoIso(1),
     emergencyContact: {
       name: 'Thomas Barnes',
+      relationship: 'Son',
       email: 'thomas.barnes@email.com',
       phone: '(302) 555-0758',
       consented: true,
