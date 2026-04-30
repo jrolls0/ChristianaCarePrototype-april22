@@ -120,6 +120,7 @@ function withDerivedPatientFields(patient: Patient): Patient {
     roiSignedAt,
     smsConsent: patient.smsConsent ?? roiSigned,
     emailConsent: patient.emailConsent ?? roiSigned,
+    phoneConsent: patient.phoneConsent ?? roiSigned,
     emergencyContactConsent:
       patient.emergencyContactConsent ??
       Boolean(patient.emergencyContact?.consented || emergencyContactConsentFromTodo),
@@ -504,6 +505,23 @@ export const useStore = create<DemoState>()(
         return get().patients.find((p) => normalizeUsername(p.email) === lookup);
       },
 
+      saveCommunicationConsents: (patientId, consents) => {
+        const now = new Date().toISOString();
+        set({
+          patients: get().patients.map((p) =>
+            p.id !== patientId
+              ? p
+              : {
+                  ...p,
+                  emailConsent: consents.emailConsent,
+                  smsConsent: consents.smsConsent,
+                  phoneConsent: consents.phoneConsent,
+                  lastActivityAt: now,
+                }
+          ),
+        });
+      },
+
       completeTodo: (patientId, todoId) => {
         const now = new Date().toISOString();
         set({
@@ -772,8 +790,6 @@ export const useStore = create<DemoState>()(
               hasCompletedOnboarding: true,
               roiSigned: true,
               roiSignedAt: p.roiSignedAt ?? now,
-              smsConsent: p.smsConsent ?? true,
-              emailConsent: p.emailConsent ?? true,
             }, now);
           }),
         });

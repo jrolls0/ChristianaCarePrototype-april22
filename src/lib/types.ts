@@ -139,6 +139,7 @@ export interface Patient {
   roiSignedAt?: string;
   smsConsent?: boolean;
   emailConsent?: boolean;
+  phoneConsent?: boolean;
   emergencyContactConsent?: boolean;
   screeningResponses?: ScreeningResponses;
   endReferral?: EndReferralRecord;
@@ -199,6 +200,10 @@ export interface DemoState {
   registerSelf: (data: SelfRegistration) => PatientRegistrationResult;
   authenticatePatient: (username: string, password: string) => PatientAuthResult;
   findPatientByEmail: (email: string) => Patient | undefined;
+  saveCommunicationConsents: (
+    patientId: string,
+    consents: { emailConsent: boolean; smsConsent: boolean; phoneConsent: boolean }
+  ) => void;
   markOnboardingComplete: (patientId: string) => void;
   setLastPatientTab: (tab: PatientTab) => void;
   completeTodo: (patientId: string, todoId: string) => void;

@@ -107,6 +107,7 @@ const withDemoConsents = (patient: Patient): Patient => {
       completedAtFor(patient, 'sign-roi-services'),
     smsConsent: patient.smsConsent ?? roiSigned,
     emailConsent: patient.emailConsent ?? roiSigned,
+    phoneConsent: patient.phoneConsent ?? roiSigned,
     emergencyContactConsent:
       patient.emergencyContactConsent ??
       Boolean(patient.emergencyContact?.consented || completedAtFor(patient, 'add-emergency-contact')),

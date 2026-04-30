@@ -62,7 +62,13 @@ import {
 } from '../../lib/attachments';
 import { AttachButton, AttachmentChips } from '../../components/ui/AttachmentRow';
 
-type OnboardingStep = 'entry' | 'servicesConsent' | 'medicalRecordsConsent' | 'carePartnerPrompt' | 'app';
+type OnboardingStep =
+  | 'entry'
+  | 'servicesConsent'
+  | 'medicalRecordsConsent'
+  | 'communicationConsent'
+  | 'carePartnerPrompt'
+  | 'app';
 type EntryAuthTab = 'register' | 'login';
 type AppTab = 'home' | 'amelia' | 'messages' | 'profile' | 'help';
 type MessagesIntent = 'openFirstUnread' | null;
@@ -151,6 +157,12 @@ type CarePartnerInvitePayload = {
   email: string;
   phone: string;
   consentGiven: boolean;
+};
+
+type CommunicationConsentPayload = {
+  emailConsent: boolean;
+  smsConsent: boolean;
+  phoneConsent: boolean;
 };
 
 type RegistrationErrors = Partial<Record<
@@ -654,6 +666,7 @@ export default function MobilePrototypePage() {
   const setCurrentPatientAction = useStore((s) => s.setCurrentPatient);
   const registerSelfAction = useStore((s) => s.registerSelf);
   const authenticatePatientAction = useStore((s) => s.authenticatePatient);
+  const saveCommunicationConsentsAction = useStore((s) => s.saveCommunicationConsents);
   const markOnboardingCompleteAction = useStore((s) => s.markOnboardingComplete);
   const setLastPatientTabAction = useStore((s) => s.setLastPatientTab);
   const saveScreeningResponsesAction = useStore((s) => s.saveScreeningResponses);
@@ -902,6 +915,12 @@ export default function MobilePrototypePage() {
     setOnboardingStep('app');
   }
 
+  function handleCommunicationConsentComplete(consents: CommunicationConsentPayload) {
+    if (!currentPatient) return;
+    saveCommunicationConsentsAction(patientId, consents);
+    setOnboardingStep('carePartnerPrompt');
+  }
+
   return (
     <div className="relative min-h-[100dvh] bg-[#f0f5fb] sm:p-6">
       <Link
@@ -946,7 +965,14 @@ export default function MobilePrototypePage() {
               <ServicesConsentScreen onComplete={() => setOnboardingStep('medicalRecordsConsent')} />
             )}
             {onboardingStep === 'medicalRecordsConsent' && (
-              <MedicalRecordsConsentScreen onComplete={() => setOnboardingStep('carePartnerPrompt')} />
+              <MedicalRecordsConsentScreen onComplete={() => setOnboardingStep('communicationConsent')} />
+            )}
+            {onboardingStep === 'communicationConsent' && (
+              <CommunicationConsentScreen
+                email={currentPatient?.email ?? username}
+                phone={currentPatient?.phone ?? ''}
+                onComplete={handleCommunicationConsentComplete}
+              />
             )}
             {onboardingStep === 'carePartnerPrompt' && (
               <CarePartnerPromptScreen
@@ -1865,6 +1891,136 @@ function MedicalRecordsConsentScreen({ onComplete }: { onComplete: () => void })
       footerNote="This form complies with HIPAA regulations (45 CFR Parts 160 and 164) and applicable state privacy laws."
       onComplete={onComplete}
     />
+  );
+}
+
+function CommunicationConsentScreen({
+  email,
+  onComplete,
+  phone,
+}: {
+  email: string;
+  onComplete: (payload: CommunicationConsentPayload) => void;
+  phone: string;
+}) {
+  const contactPhone = phone.trim() || 'your phone number on file';
+  const [emailConsent, setEmailConsent] = useState(true);
+  const [smsConsent, setSmsConsent] = useState(true);
+  const [phoneConsent, setPhoneConsent] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const hasContactMethod = emailConsent || smsConsent || phoneConsent;
+
+  function submitPreferences() {
+    if (!hasContactMethod) {
+      setErrorMessage('Select at least one contact method to continue.');
+      return;
+    }
+    setErrorMessage('');
+    onComplete({ emailConsent, smsConsent, phoneConsent });
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-gradient-to-br from-[#f2f7ff] via-[#ecf3ff] to-[#e2edf8] px-5 pb-6 pt-10">
+      <div className="mb-6 mt-2 text-center">
+        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[#3399e6] shadow-[0_8px_20px_rgba(51,153,230,0.3)]">
+          <Bell className="h-8 w-8 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900">Communication Preferences</h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          How can ChristianaCare contact you about your transplant referral?
+        </p>
+      </div>
+
+      <div className="rounded-[24px] bg-white/95 p-4 shadow-[0_20px_40px_rgba(15,23,42,0.11)]">
+        <div className="space-y-3">
+          <CommunicationConsentOption
+            checked={emailConsent}
+            detail={`Send updates and reminders to ${email}`}
+            icon={Mail}
+            label="Email"
+            onToggle={() => setEmailConsent((previous) => !previous)}
+          />
+          <CommunicationConsentOption
+            checked={smsConsent}
+            detail={`Send short reminders and care-team notifications to ${contactPhone}`}
+            icon={SendHorizontal}
+            label="Text messages / SMS"
+            onToggle={() => setSmsConsent((previous) => !previous)}
+          />
+          <CommunicationConsentOption
+            checked={phoneConsent}
+            detail={`Call ${contactPhone} if the care team needs to reach you`}
+            icon={Phone}
+            label="Phone calls"
+            onToggle={() => setPhoneConsent((previous) => !previous)}
+          />
+
+          <div className="rounded-xl bg-[#f8fbff] px-3 py-2.5 text-xs leading-relaxed text-slate-600 ring-1 ring-[#d8e4f1]">
+            Portal messages will still appear inside this demo. These choices control simulated
+            email, text, and phone contact.
+          </div>
+
+          {errorMessage && <p className="text-xs text-red-600">{errorMessage}</p>}
+
+          <button
+            type="button"
+            onClick={submitPreferences}
+            disabled={!hasContactMethod}
+            className={`inline-flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold text-white ${
+              hasContactMethod
+                ? 'bg-[#3399e6] shadow-[0_10px_24px_rgba(51,153,230,0.35)]'
+                : 'bg-slate-300'
+            }`}
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CommunicationConsentOption({
+  checked,
+  detail,
+  disabled = false,
+  icon: Icon,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  detail: string;
+  disabled?: boolean;
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      className={`flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition ${
+        disabled
+          ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-70'
+          : checked
+            ? 'border-[#b8dcfb] bg-[#eef6ff]'
+            : 'border-[#d8e4f1] bg-white'
+      }`}
+    >
+      <span
+        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+          checked ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'
+        }`}
+      >
+        {checked && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3.5} />}
+      </span>
+      <Icon className={checked ? 'mt-0.5 h-4 w-4 shrink-0 text-[#1a66cc]' : 'mt-0.5 h-4 w-4 shrink-0 text-slate-400'} />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-slate-900">{label}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{detail}</span>
+      </span>
+    </button>
   );
 }
 

@@ -607,8 +607,9 @@ function PatientHeader({ patient }: { patient: Patient }) {
             label="ROI Signed"
             detail={hasRoi(patient) ? formatDate(roiSignedAt(patient)) : undefined}
           />
-          <ConsentRow checked={Boolean(patient.smsConsent)} label="SMS Consent" />
           <ConsentRow checked={Boolean(patient.emailConsent)} label="Email Consent" />
+          <ConsentRow checked={Boolean(patient.smsConsent)} label="SMS Consent" />
+          <ConsentRow checked={Boolean(patient.phoneConsent)} label="Phone Consent" />
           <ConsentRow
             checked={hasEmergencyConsent(patient)}
             label="Emergency Contact Consent"
