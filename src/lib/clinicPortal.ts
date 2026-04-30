@@ -1,6 +1,6 @@
 import { PATIENT_STAGE_LABEL } from '@/lib/stages';
 import type { DocumentRecord, Patient, PatientStage } from '@/lib/types';
-import { CLINIC_THREAD_KEY } from '@/lib/clinicInbox';
+import { CLINIC_PATIENT_THREAD_KEY, CLINIC_THREAD_KEY } from '@/lib/clinicInbox';
 
 export const AWAITING_PATIENT_STAGES: PatientStage[] = ['onboarding', 'initial-todos'];
 export const SERVICES_ROI_DOCUMENT = 'Services ROI';
@@ -40,7 +40,8 @@ export function waitingOnLabel(stage: PatientStage): {
 export function hasClinicUnread(patient: Patient): boolean {
   return patient.messages.some(
     (message) =>
-      message.threadKey === CLINIC_THREAD_KEY &&
+      (message.threadKey === CLINIC_THREAD_KEY ||
+        message.threadKey === CLINIC_PATIENT_THREAD_KEY) &&
       message.fromRole !== 'clinic' &&
       !message.readByClinic
   );

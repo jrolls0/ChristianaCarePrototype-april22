@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { clsx } from 'clsx';
 import {
   ArrowLeft,
+  Building2,
   CheckCircle2,
   Circle,
   Clock,
@@ -21,7 +22,12 @@ import { StatusPill } from '@/components/ui/StatusPill';
 import { ThreadMessage } from '@/components/ui/ThreadMessage';
 import { AttachButton, AttachmentChips } from '@/components/ui/AttachmentRow';
 import { appendAttachmentSummary, type Attachment } from '@/lib/attachments';
-import { CLINIC_THREAD_KEY } from '@/lib/clinicInbox';
+import {
+  CLINIC_INBOX_THREAD,
+  CLINIC_PATIENT_THREAD_KEY,
+  CLINIC_THREAD_KEY,
+  type ClinicInboxChannel,
+} from '@/lib/clinicInbox';
 import {
   clinicDocuments,
   clinicRoiDocuments,
@@ -79,19 +85,6 @@ export default function ClinicCasePage() {
       candidate.referringClinic === clinicUser.clinicName &&
       candidate.stage !== 'new-referral'
   );
-
-  useEffect(() => {
-    if (!patient) return;
-    const hasUnread = patient.messages.some(
-      (message) =>
-        message.threadKey === CLINIC_THREAD_KEY &&
-        message.fromRole !== 'clinic' &&
-        !message.readByClinic
-    );
-    if (hasUnread) {
-      markThreadRead(patient.id, CLINIC_THREAD_KEY, 'clinic');
-    }
-  }, [patient, markThreadRead]);
 
   if (!patient) {
     return (
@@ -158,7 +151,12 @@ export default function ClinicCasePage() {
         {activeTab === 'messages' && (
           <MessagesTab
             patient={patient}
-            onSendMessage={(body) => sendMessage(patient.id, 'clinic', body, CLINIC_THREAD_KEY)}
+            onMarkThreadRead={(channel) =>
+              markThreadRead(patient.id, CLINIC_INBOX_THREAD[channel], 'clinic')
+            }
+            onSendMessage={(channel, body) =>
+              sendMessage(patient.id, 'clinic', body, CLINIC_INBOX_THREAD[channel])
+            }
           />
         )}
         {activeTab === 'activity' && <ActivityTab patient={patient} />}
@@ -676,39 +674,105 @@ function DocumentViewerModal({
 }
 
 function MessagesTab({
+  onMarkThreadRead,
   onSendMessage,
   patient,
 }: {
-  onSendMessage: (body: string) => void;
+  onMarkThreadRead: (channel: ClinicInboxChannel) => void;
+  onSendMessage: (channel: ClinicInboxChannel, body: string) => void;
   patient: Patient;
 }) {
+  const [activeMsgTab, setActiveMsgTab] = useState<ClinicInboxChannel>('transplant-center');
   const [reply, setReply] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const thread = patient.messages
-    .filter((message) => message.threadKey === CLINIC_THREAD_KEY)
-    .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+  const threadKey = CLINIC_INBOX_THREAD[activeMsgTab];
+  const thread = useMemo(
+    () =>
+      patient.messages
+        .filter((message) => message.threadKey === threadKey)
+        .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime()),
+    [patient.messages, threadKey]
+  );
+
+  useEffect(() => {
+    const hasUnread = thread.some(
+      (message) => message.fromRole !== 'clinic' && !message.readByClinic
+    );
+    if (hasUnread) onMarkThreadRead(activeMsgTab);
+  }, [activeMsgTab, onMarkThreadRead, thread]);
+
+  useEffect(() => {
+    setReply('');
+    setAttachments([]);
+  }, [activeMsgTab]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = reply.trim();
     if (!trimmed && attachments.length === 0) return;
-    onSendMessage(appendAttachmentSummary(trimmed, attachments));
+    onSendMessage(activeMsgTab, appendAttachmentSummary(trimmed, attachments));
     setReply('');
     setAttachments([]);
   }
+
+  const activeLabel = activeMsgTab === 'transplant-center' ? 'ChristianaCare' : 'Patient';
+  const emptyCopy =
+    activeMsgTab === 'transplant-center'
+      ? 'No messages with ChristianaCare yet.'
+      : `No direct messages with ${patient.firstName} yet.`;
+  const helperCopy =
+    activeMsgTab === 'transplant-center'
+      ? `Front Desk team · regarding ${patient.firstName} ${patient.lastName}`
+      : null;
+  const placeholder =
+    activeMsgTab === 'transplant-center'
+      ? 'Message ChristianaCare Front Desk...'
+      : `Message ${patient.firstName}...`;
 
   return (
     <section className="flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <header className="shrink-0 border-b border-slate-100 px-5 py-4">
         <h3 className="text-base font-semibold text-slate-900">Messages</h3>
         <p className="text-sm text-slate-500">
-          Clinic messages are routed to the ChristianaCare Front Desk team.
+          Patient-specific conversations for {patient.firstName} {patient.lastName}.
         </p>
       </header>
+      <div className="flex gap-1 border-b border-slate-100 bg-slate-50/60 px-3 pt-2">
+        <button
+          type="button"
+          onClick={() => setActiveMsgTab('transplant-center')}
+          className={clsx(
+            'inline-flex items-center gap-1.5 rounded-t-xl px-3 py-2 text-xs font-semibold transition',
+            activeMsgTab === 'transplant-center'
+              ? 'bg-white text-[#1a66cc] shadow-sm ring-1 ring-slate-100'
+              : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'
+          )}
+        >
+          <Building2 className="h-3.5 w-3.5" />
+          ChristianaCare
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveMsgTab('patient')}
+          className={clsx(
+            'inline-flex items-center gap-1.5 rounded-t-xl px-3 py-2 text-xs font-semibold transition',
+            activeMsgTab === 'patient'
+              ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-slate-100'
+              : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'
+          )}
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          Patient
+        </button>
+      </div>
+      <div className="border-b border-slate-100 px-5 py-3">
+        <p className="text-sm font-semibold text-slate-900">{activeLabel}</p>
+        {helperCopy && <p className="text-xs text-slate-500">{helperCopy}</p>}
+      </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50/40 px-5 py-4">
         {thread.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
-            No messages with ChristianaCare yet.
+            {emptyCopy}
           </div>
         ) : (
           thread.map((message) => (
@@ -726,7 +790,7 @@ function MessagesTab({
             rows={1}
             value={reply}
             onChange={(event) => setReply(event.target.value)}
-            placeholder="Message ChristianaCare Front Desk..."
+            placeholder={placeholder}
             className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
           />
           <AttachButton
@@ -770,12 +834,19 @@ function ActivityTab({ patient }: { patient: Patient }) {
         detail: 'Dialysis clinic upload',
       })),
       ...patient.messages
-        .filter((message) => message.threadKey === CLINIC_THREAD_KEY)
+        .filter(
+          (message) =>
+            message.threadKey === CLINIC_THREAD_KEY ||
+            message.threadKey === CLINIC_PATIENT_THREAD_KEY
+        )
         .map((message) => ({
           id: `msg-${message.id}`,
           at: message.sentAt,
           label: `${message.fromName} sent a message`,
-          detail: 'ChristianaCare thread',
+          detail:
+            message.threadKey === CLINIC_THREAD_KEY
+              ? 'ChristianaCare thread'
+              : 'Patient thread',
         })),
     ];
 

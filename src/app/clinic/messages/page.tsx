@@ -18,17 +18,18 @@ import { ThreadMessage } from '@/components/ui/ThreadMessage';
 import { AttachButton, AttachmentChips } from '@/components/ui/AttachmentRow';
 import { appendAttachmentSummary, type Attachment } from '@/lib/attachments';
 import {
-  CLINIC_THREAD_KEY,
+  CLINIC_INBOX_THREAD,
   buildClinicConversations,
   clinicConversationKey,
   clinicScopedPatients,
   useClinicInboxUnread,
+  type ClinicInboxChannel,
   type ClinicConversationSummary,
 } from '@/lib/clinicInbox';
 import { useStore } from '@/lib/store';
 import type { Patient } from '@/lib/types';
 
-type ListFilter = 'all' | 'transplant-center';
+type ListFilter = 'all' | ClinicInboxChannel;
 
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -48,12 +49,50 @@ function snippet(body: string): string {
   return trimmed.length > 120 ? `${trimmed.slice(0, 120)}...` : trimmed;
 }
 
+function patientName(patient: Patient): string {
+  return `${patient.firstName} ${patient.lastName}`;
+}
+
+function initialsFor(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '??';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function transplantCenterContact(conversation: ClinicConversationSummary): string {
+  return (
+    conversation.messages.find((message) => message.fromRole === 'staff')?.fromName ??
+    'Sarah Martinez'
+  );
+}
+
+function clinicConversationTitle(conversation: ClinicConversationSummary): string {
+  if (conversation.channel === 'transplant-center') return 'ChristianaCare Front Desk';
+  return patientName(conversation.patient);
+}
+
+function clinicConversationContext(
+  conversation: ClinicConversationSummary
+): { patient: string; contactLabel: string; contact: string } | null {
+  if (conversation.channel !== 'transplant-center') return null;
+  return {
+    patient: patientName(conversation.patient),
+    contactLabel: 'TC contact',
+    contact: transplantCenterContact(conversation),
+  };
+}
+
 export default function ClinicMessagesPage() {
   const patients = useStore((state) => state.patients);
   const clinicUser = useStore((state) => state.currentClinicUser);
   const sendMessage = useStore((state) => state.sendMessage);
   const markThreadRead = useStore((state) => state.markThreadRead);
-  const { total: totalUnread } = useClinicInboxUnread();
+  const {
+    patientUnread,
+    total: totalUnread,
+    transplantCenterUnread,
+  } = useClinicInboxUnread();
 
   const [filter, setFilter] = useState<ListFilter>('all');
   const [query, setQuery] = useState('');
@@ -72,22 +111,47 @@ export default function ClinicMessagesPage() {
     () => buildClinicConversations(patients, clinicUser.clinicName),
     [patients, clinicUser.clinicName]
   );
+  const transplantCenterConversations = useMemo(
+    () => conversations.filter((conversation) => conversation.channel === 'transplant-center'),
+    [conversations]
+  );
+  const patientConversations = useMemo(
+    () => conversations.filter((conversation) => conversation.channel === 'patient'),
+    [conversations]
+  );
 
   const filteredConversations = useMemo(() => {
-    if (!query.trim()) return conversations;
+    const source =
+      filter === 'all'
+        ? conversations
+        : conversations.filter((conversation) => conversation.channel === filter);
+    if (!query.trim()) return source;
     const q = query.trim().toLowerCase();
-    return conversations.filter((conversation) => {
+    return source.filter((conversation) => {
       const patientName =
         `${conversation.patient.firstName} ${conversation.patient.lastName}`.toLowerCase();
       if (patientName.includes(q)) return true;
       if (conversation.patient.nephrologistName?.toLowerCase().includes(q)) return true;
       return conversation.messages.some((message) => message.body.toLowerCase().includes(q));
     });
-  }, [conversations, query]);
+  }, [conversations, filter, query]);
 
   useEffect(() => {
-    if (!selectedKey && filteredConversations.length > 0) {
-      setSelectedKey(clinicConversationKey(filteredConversations[0].patient.id));
+    if (filteredConversations.length === 0) {
+      setSelectedKey(null);
+      return;
+    }
+    const selectedVisible = filteredConversations.some(
+      (conversation) =>
+        clinicConversationKey(conversation.patient.id, conversation.channel) === selectedKey
+    );
+    if (!selectedKey || !selectedVisible) {
+      setSelectedKey(
+        clinicConversationKey(
+          filteredConversations[0].patient.id,
+          filteredConversations[0].channel
+        )
+      );
     }
   }, [filteredConversations, selectedKey]);
 
@@ -95,7 +159,8 @@ export default function ClinicMessagesPage() {
     if (!selectedKey) return null;
     return (
       conversations.find(
-        (conversation) => clinicConversationKey(conversation.patient.id) === selectedKey
+        (conversation) =>
+          clinicConversationKey(conversation.patient.id, conversation.channel) === selectedKey
       ) ?? null
     );
   }, [conversations, selectedKey]);
@@ -103,17 +168,17 @@ export default function ClinicMessagesPage() {
   useEffect(() => {
     if (!selected) return;
     if (selected.unreadCount > 0) {
-      markThreadRead(selected.patient.id, CLINIC_THREAD_KEY, 'clinic');
+      markThreadRead(selected.patient.id, selected.threadKey, 'clinic');
     }
   }, [selected, markThreadRead]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [selected?.patient.id, selected?.messages.length]);
+  }, [selected?.patient.id, selected?.channel, selected?.messages.length]);
 
   function handleSelect(conversation: ClinicConversationSummary) {
-    setSelectedKey(clinicConversationKey(conversation.patient.id));
+    setSelectedKey(clinicConversationKey(conversation.patient.id, conversation.channel));
     setReply('');
     setReplyAttachments([]);
   }
@@ -127,7 +192,7 @@ export default function ClinicMessagesPage() {
       selected.patient.id,
       'clinic',
       appendAttachmentSummary(trimmed, replyAttachments),
-      CLINIC_THREAD_KEY
+      selected.threadKey
     );
     setReply('');
     setReplyAttachments([]);
@@ -151,7 +216,7 @@ export default function ClinicMessagesPage() {
             <p className="text-sm text-slate-500">
               {totalUnread === 0
                 ? 'Inbox is clear. Nothing waiting on you.'
-                : `${totalUnread} unread ${totalUnread === 1 ? 'message' : 'messages'} from ChristianaCare.`}
+                : `${totalUnread} unread ${totalUnread === 1 ? 'message' : 'messages'} across ChristianaCare and patient threads.`}
             </p>
           </div>
           <button
@@ -195,10 +260,17 @@ export default function ClinicMessagesPage() {
                 />
                 <FilterPill
                   active={filter === 'transplant-center'}
-                  count={totalUnread || conversations.length}
+                  count={transplantCenterConversations.length}
                   label="Transplant Center"
-                  unread={filter !== 'transplant-center' && totalUnread > 0}
+                  unread={filter !== 'transplant-center' && transplantCenterUnread > 0}
                   onClick={() => setFilter('transplant-center')}
+                />
+                <FilterPill
+                  active={filter === 'patient'}
+                  count={patientConversations.length}
+                  label="Patient"
+                  unread={filter !== 'patient' && patientUnread > 0}
+                  onClick={() => setFilter('patient')}
                 />
               </div>
             </div>
@@ -215,14 +287,19 @@ export default function ClinicMessagesPage() {
                   <p className="mt-1 text-xs text-slate-500">
                     {query
                       ? 'Try a different search term.'
-                      : 'ChristianaCare conversations will show up here.'}
+                      : 'ChristianaCare and patient conversations will show up here.'}
                   </p>
                 </div>
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {filteredConversations.map((conversation) => {
-                    const key = clinicConversationKey(conversation.patient.id);
+                    const key = clinicConversationKey(
+                      conversation.patient.id,
+                      conversation.channel
+                    );
                     const isSelected = selectedKey === key;
+                    const title = clinicConversationTitle(conversation);
+                    const context = clinicConversationContext(conversation);
                     const preview =
                       conversation.latest.fromRole === 'clinic'
                         ? `You: ${snippet(conversation.latest.body)}`
@@ -241,8 +318,7 @@ export default function ClinicMessagesPage() {
                           )}
                         >
                           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-xs font-semibold text-white">
-                            {conversation.patient.firstName[0]}
-                            {conversation.patient.lastName[0]}
+                            {initialsFor(title)}
                             {conversation.unreadCount > 0 && (
                               <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-[10px] font-semibold text-white">
                                 {conversation.unreadCount}
@@ -259,16 +335,29 @@ export default function ClinicMessagesPage() {
                                     : 'font-medium text-slate-800'
                                 )}
                               >
-                                {conversation.patient.firstName} {conversation.patient.lastName}
+                                {title}
                               </span>
                               <span className="shrink-0 text-[11px] text-slate-400">
                                 {relativeTime(conversation.latest.sentAt)}
                               </span>
                             </div>
-                            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-                              <Building2 className="h-3 w-3 text-[#3399e6]" />
-                              <span className="truncate">ChristianaCare Front Desk</span>
-                            </div>
+                            {context && (
+                              <div className="mt-0.5 flex items-start gap-1.5 text-[11px] text-slate-500">
+                                <Building2 className="mt-0.5 h-3 w-3 shrink-0 text-[#3399e6]" />
+                                <div className="min-w-0 space-y-0.5">
+                                  <p className="truncate">
+                                    <span className="font-semibold text-slate-600">Patient:</span>{' '}
+                                    {context.patient}
+                                  </p>
+                                  <p className="truncate">
+                                    <span className="font-semibold text-slate-600">
+                                      {context.contactLabel}:
+                                    </span>{' '}
+                                    {context.contact}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
                             <p
                               className={clsx(
                                 'mt-1 line-clamp-2 text-[13px] leading-snug',
@@ -304,22 +393,36 @@ export default function ClinicMessagesPage() {
               </div>
             ) : (
               <>
+                {(() => {
+                  const title = clinicConversationTitle(selected);
+                  const context = clinicConversationContext(selected);
+                  return (
                 <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-sm font-semibold text-white">
-                      {selected.patient.firstName[0]}
-                      {selected.patient.lastName[0]}
+                      {initialsFor(title)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-base font-semibold text-slate-900">
-                          {selected.patient.firstName} {selected.patient.lastName}
+                          {title}
                         </h3>
-                        <ChannelBadge />
+                        <ChannelBadge channel={selected.channel} />
                       </div>
-                      <p className="text-xs text-slate-500">
-                        ChristianaCare Front Desk · {clinicUser.clinicName}
-                      </p>
+                      {context && (
+                        <div className="mt-1 space-y-0.5 text-xs text-slate-500">
+                          <p>
+                            <span className="font-semibold text-slate-600">Patient:</span>{' '}
+                            {context.patient}
+                          </p>
+                          <p>
+                            <span className="font-semibold text-slate-600">
+                              {context.contactLabel}:
+                            </span>{' '}
+                            {context.contact}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -333,6 +436,8 @@ export default function ClinicMessagesPage() {
                     </Link>
                   </div>
                 </header>
+                  );
+                })()}
 
                 <div
                   ref={scrollRef}
@@ -361,7 +466,11 @@ export default function ClinicMessagesPage() {
                         }
                       }}
                       rows={1}
-                      placeholder="Reply to ChristianaCare..."
+                      placeholder={
+                        selected.channel === 'transplant-center'
+                          ? 'Reply to ChristianaCare...'
+                          : `Message ${selected.patient.firstName}...`
+                      }
                       className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
                     />
                     <AttachButton
@@ -389,9 +498,10 @@ export default function ClinicMessagesPage() {
         <ComposeModal
           onClose={() => setComposeOpen(false)}
           patients={clinicPatients}
-          onSend={(patientId, body) => {
-            sendMessage(patientId, 'clinic', body, CLINIC_THREAD_KEY);
-            setSelectedKey(clinicConversationKey(patientId));
+          onSend={(patientId, channel, body) => {
+            sendMessage(patientId, 'clinic', body, CLINIC_INBOX_THREAD[channel]);
+            setSelectedKey(clinicConversationKey(patientId, channel));
+            setFilter(channel);
             setComposeOpen(false);
           }}
         />
@@ -439,7 +549,15 @@ function FilterPill({
   );
 }
 
-function ChannelBadge() {
+function ChannelBadge({ channel }: { channel: ClinicInboxChannel }) {
+  if (channel === 'patient') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-100">
+        <MessageSquare className="h-3 w-3" />
+        Patient
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-[#eef6ff] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#1a66cc] ring-1 ring-[#dbeeff]">
       <Building2 className="h-3 w-3" />
@@ -454,9 +572,10 @@ function ComposeModal({
   patients,
 }: {
   onClose: () => void;
-  onSend: (patientId: string, body: string) => void;
+  onSend: (patientId: string, channel: ClinicInboxChannel, body: string) => void;
   patients: Patient[];
 }) {
+  const [channel, setChannel] = useState<ClinicInboxChannel>('transplant-center');
   const [patientId, setPatientId] = useState<string>(patients[0]?.id ?? '');
   const [body, setBody] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -465,7 +584,7 @@ function ComposeModal({
     event.preventDefault();
     const trimmed = body.trim();
     if (!patientId || (trimmed.length === 0 && attachments.length === 0)) return;
-    onSend(patientId, appendAttachmentSummary(trimmed, attachments));
+    onSend(patientId, channel, appendAttachmentSummary(trimmed, attachments));
   }
 
   function removeAttachment(id: string) {
@@ -496,14 +615,39 @@ function ComposeModal({
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Channel
             </span>
-            <div className="mt-1.5 rounded-xl border border-[#3399e6] bg-[#eef6ff] px-3 py-2.5 text-sm font-semibold text-[#0f3e80] ring-2 ring-[#dbeeff]">
-              ChristianaCare Front Desk
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setChannel('transplant-center')}
+                className={clsx(
+                  'flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition',
+                  channel === 'transplant-center'
+                    ? 'border-[#3399e6] bg-[#eef6ff] text-[#0f3e80] ring-2 ring-[#dbeeff]'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                )}
+              >
+                <Building2 className="h-4 w-4" />
+                ChristianaCare
+              </button>
+              <button
+                type="button"
+                onClick={() => setChannel('patient')}
+                className={clsx(
+                  'flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition',
+                  channel === 'patient'
+                    ? 'border-emerald-400 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-100'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                )}
+              >
+                <MessageSquare className="h-4 w-4" />
+                Patient
+              </button>
             </div>
           </div>
 
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Patient
+              Referral
             </span>
             <select
               value={patientId}
@@ -526,7 +670,11 @@ function ComposeModal({
               value={body}
               onChange={(event) => setBody(event.target.value)}
               rows={5}
-              placeholder="Write your message..."
+              placeholder={
+                channel === 'transplant-center'
+                  ? 'Write your message to ChristianaCare...'
+                  : 'Write your message to the patient...'
+              }
               className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
               autoFocus
             />

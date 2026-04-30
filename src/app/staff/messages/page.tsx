@@ -55,6 +55,35 @@ function snippet(body: string): string {
   return trimmed.length > 120 ? `${trimmed.slice(0, 120)}…` : trimmed;
 }
 
+function patientName(patient: ConversationSummary['patient']): string {
+  return `${patient.firstName} ${patient.lastName}`;
+}
+
+function initialsFor(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '??';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function staffConversationTitle(conversation: ConversationSummary): string {
+  if (conversation.tab === 'clinic') {
+    return conversation.patient.referringClinic ?? 'Dialysis Clinic';
+  }
+  return patientName(conversation.patient);
+}
+
+function staffConversationContext(
+  conversation: ConversationSummary
+): { patient: string; contactLabel: string; contact: string } | null {
+  if (conversation.tab !== 'clinic') return null;
+  return {
+    patient: patientName(conversation.patient),
+    contactLabel: 'Clinic contact',
+    contact: conversation.patient.duswName ?? 'Not assigned',
+  };
+}
+
 export default function StaffMessagesPage() {
   return (
     <Suspense
@@ -282,6 +311,8 @@ function MessagesInner() {
                   {filteredConvos.map((c) => {
                     const key = conversationKey(c.patient.id, c.tab);
                     const isSelected = selectedKey === key;
+                    const title = staffConversationTitle(c);
+                    const context = staffConversationContext(c);
                     const preview =
                       c.latest.fromRole === 'staff'
                         ? `You: ${snippet(c.latest.body)}`
@@ -299,8 +330,7 @@ function MessagesInner() {
                           )}
                         >
                           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-xs font-semibold text-white">
-                            {c.patient.firstName[0]}
-                            {c.patient.lastName[0]}
+                            {initialsFor(title)}
                             {c.unreadCount > 0 && (
                               <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-[10px] font-semibold text-white">
                                 {c.unreadCount}
@@ -317,29 +347,29 @@ function MessagesInner() {
                                     : 'font-medium text-slate-800'
                                 )}
                               >
-                                {c.patient.firstName} {c.patient.lastName}
+                                {title}
                               </span>
                               <span className="shrink-0 text-[11px] text-slate-400">
                                 {relativeTime(c.latest.sentAt)}
                               </span>
                             </div>
-                            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-                              {c.tab === 'clinic' ? (
-                                <>
-                                  <Building2 className="h-3 w-3 text-violet-500" />
-                                  <span className="truncate">
-                                    {c.patient.referringClinic ?? 'Self-registered'}
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  <MessageSquare className="h-3 w-3 text-[#3399e6]" />
-                                  <span className="truncate">
-                                    Patient · {c.patient.referringClinic ?? 'Self-registered'}
-                                  </span>
-                                </>
-                              )}
-                            </div>
+                            {context && (
+                              <div className="mt-0.5 flex items-start gap-1.5 text-[11px] text-slate-500">
+                                <Building2 className="mt-0.5 h-3 w-3 shrink-0 text-violet-500" />
+                                <div className="min-w-0 space-y-0.5">
+                                  <p className="truncate">
+                                    <span className="font-semibold text-slate-600">Patient:</span>{' '}
+                                    {context.patient}
+                                  </p>
+                                  <p className="truncate">
+                                    <span className="font-semibold text-slate-600">
+                                      {context.contactLabel}:
+                                    </span>{' '}
+                                    {context.contact}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
                             <p
                               className={clsx(
                                 'mt-1 line-clamp-2 text-[13px] leading-snug',
@@ -376,24 +406,36 @@ function MessagesInner() {
               </div>
             ) : (
               <>
+                {(() => {
+                  const title = staffConversationTitle(selected);
+                  const context = staffConversationContext(selected);
+                  return (
                 <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-sm font-semibold text-white">
-                      {selected.patient.firstName[0]}
-                      {selected.patient.lastName[0]}
+                      {initialsFor(title)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-base font-semibold text-slate-900">
-                          {selected.patient.firstName} {selected.patient.lastName}
+                          {title}
                         </h3>
                         <ChannelBadge tab={selected.tab} />
                       </div>
-                      <p className="text-xs text-slate-500">
-                        {selected.tab === 'clinic'
-                          ? `${selected.patient.referringClinic ?? 'Self-registered'}${selected.patient.duswName ? ` · ${selected.patient.duswName}` : ''}`
-                          : `Patient · ${selected.patient.referringClinic ?? 'Self-registered'}`}
-                      </p>
+                      {context && (
+                        <div className="mt-1 space-y-0.5 text-xs text-slate-500">
+                          <p>
+                            <span className="font-semibold text-slate-600">Patient:</span>{' '}
+                            {context.patient}
+                          </p>
+                          <p>
+                            <span className="font-semibold text-slate-600">
+                              {context.contactLabel}:
+                            </span>{' '}
+                            {context.contact}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -407,6 +449,8 @@ function MessagesInner() {
                     </Link>
                   </div>
                 </header>
+                  );
+                })()}
 
                 <div
                   ref={scrollRef}
@@ -438,7 +482,7 @@ function MessagesInner() {
                       placeholder={
                         selected.tab === 'patient'
                           ? `Reply to ${selected.patient.firstName}…`
-                          : `Reply to ${selected.patient.referringClinic ?? 'the clinic'}…`
+                          : `Message ${selected.patient.referringClinic ?? 'the dialysis clinic'} about ${selected.patient.firstName}…`
                       }
                       className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
                     />
@@ -525,7 +569,7 @@ function ChannelBadge({ tab }: { tab: InboxTab }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-700 ring-1 ring-violet-100">
         <Building2 className="h-3 w-3" />
-        Clinic
+        Dialysis Clinic
       </span>
     );
   }
@@ -550,8 +594,24 @@ function ComposeModal({
   const [patientId, setPatientId] = useState<string>(patients[0]?.id ?? '');
   const [body, setBody] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const clinicPatients = useMemo(
+    () => patients.filter((patient) => Boolean(patient.referringClinic)),
+    [patients]
+  );
+  const availablePatients = tab === 'clinic' ? clinicPatients : patients;
+  const hasClinicPatients = clinicPatients.length > 0;
 
-  const selected = patients.find((p) => p.id === patientId) ?? null;
+  useEffect(() => {
+    if (tab === 'clinic' && !hasClinicPatients) {
+      setTab('patient');
+      return;
+    }
+    if (!availablePatients.some((patient) => patient.id === patientId)) {
+      setPatientId(availablePatients[0]?.id ?? '');
+    }
+  }, [availablePatients, hasClinicPatients, patientId, tab]);
+
+  const selected = availablePatients.find((p) => p.id === patientId) ?? null;
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -605,11 +665,14 @@ function ComposeModal({
               <button
                 type="button"
                 onClick={() => setTab('clinic')}
+                disabled={!hasClinicPatients}
                 className={clsx(
                   'flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition',
                   tab === 'clinic'
                     ? 'border-violet-400 bg-violet-50 text-violet-900 ring-2 ring-violet-100'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                    : hasClinicPatients
+                      ? 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      : 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300'
                 )}
               >
                 <Building2 className="h-4 w-4" />
@@ -620,14 +683,14 @@ function ComposeModal({
 
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              {tab === 'patient' ? 'Patient' : 'Clinic (via patient)'}
+              Patient / Referral
             </span>
             <select
               value={patientId}
               onChange={(e) => setPatientId(e.target.value)}
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
             >
-              {patients.map((p) => (
+              {availablePatients.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.firstName} {p.lastName}
                   {tab === 'clinic' ? ` · ${p.referringClinic ?? 'Self-registered'}` : ''}
@@ -636,7 +699,8 @@ function ComposeModal({
             </select>
             {selected && tab === 'clinic' && (
               <p className="text-[11px] text-slate-500">
-                Goes to the clinic thread for {selected.firstName} {selected.lastName} at{' '}
+                Goes to the patient-specific clinic thread for {selected.firstName}{' '}
+                {selected.lastName} at{' '}
                 {selected.referringClinic ?? 'their clinic'}.
               </p>
             )}
@@ -650,7 +714,11 @@ function ComposeModal({
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={5}
-              placeholder="Write your message…"
+              placeholder={
+                tab === 'clinic'
+                  ? 'Write your message to the dialysis clinic...'
+                  : 'Write your message to the patient...'
+              }
               className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
               autoFocus
             />

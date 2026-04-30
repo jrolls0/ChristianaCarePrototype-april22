@@ -1859,7 +1859,7 @@ function MessagesTab({
             unread={clinicUnread}
             onClick={() => onChangeMsgTab('clinic')}
             icon={<Building2 className="h-3.5 w-3.5" />}
-            label="Clinic"
+            label="Dialysis Clinic"
           />
         )}
       </div>
@@ -1875,9 +1875,13 @@ function MessagesTab({
             <p className="mt-2 text-sm text-slate-600">
               {activeMsgTab === 'patient'
                 ? 'No messages with the patient yet.'
-                : `No messages with ${patient.referringClinic ?? 'the clinic'} yet.`}
+                : `No messages with ${patient.referringClinic ?? 'the dialysis clinic'} yet.`}
             </p>
-            <p className="mt-0.5 text-xs text-slate-500">Start the conversation below.</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {activeMsgTab === 'patient'
+                ? 'Start the conversation below.'
+                : 'Use this thread to ask the clinic about documents, referral details, or follow-up for this patient.'}
+            </p>
           </div>
         ) : (
           activeThread.map((m) => (
@@ -1904,7 +1908,7 @@ function MessagesTab({
             placeholder={
               activeMsgTab === 'patient'
                 ? `Reply to ${patient.firstName}...`
-                : `Reply to ${patient.referringClinic ?? 'the clinic'}...`
+                : `Message ${patient.referringClinic ?? 'the dialysis clinic'} about ${patient.firstName}...`
             }
             className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-[#3399e6] focus:bg-white focus:ring-2 focus:ring-[#dbeeff]"
           />

@@ -1,18 +1,31 @@
 import { useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import type { Message, Patient } from '@/lib/types';
+import type { Message, Patient, ThreadKey } from '@/lib/types';
 
 export const CLINIC_THREAD_KEY = 'clinic-staff' as const;
+export const CLINIC_PATIENT_THREAD_KEY = 'dusw' as const;
+
+export type ClinicInboxChannel = 'transplant-center' | 'patient';
+
+export const CLINIC_INBOX_THREAD: Record<ClinicInboxChannel, ThreadKey> = {
+  'transplant-center': CLINIC_THREAD_KEY,
+  patient: CLINIC_PATIENT_THREAD_KEY,
+};
 
 export interface ClinicConversationSummary {
   patient: Patient;
+  channel: ClinicInboxChannel;
+  threadKey: ThreadKey;
   messages: Message[];
   latest: Message;
   unreadCount: number;
 }
 
-export function clinicConversationKey(patientId: string): string {
-  return `${patientId}:transplant-center`;
+export function clinicConversationKey(
+  patientId: string,
+  channel: ClinicInboxChannel = 'transplant-center'
+): string {
+  return `${patientId}:${channel}`;
 }
 
 export function clinicScopedPatients(patients: Patient[], clinicName: string): Patient[] {
@@ -35,18 +48,23 @@ export function buildClinicConversations(
   const convos: ClinicConversationSummary[] = [];
 
   for (const patient of clinicScopedPatients(patients, clinicName)) {
-    const messages = patient.messages
-      .filter((message) => message.threadKey === CLINIC_THREAD_KEY)
-      .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+    for (const channel of Object.keys(CLINIC_INBOX_THREAD) as ClinicInboxChannel[]) {
+      const threadKey = CLINIC_INBOX_THREAD[channel];
+      const messages = patient.messages
+        .filter((message) => message.threadKey === threadKey)
+        .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
 
-    if (messages.length === 0) continue;
+      if (messages.length === 0) continue;
 
-    convos.push({
-      patient,
-      messages,
-      latest: messages[messages.length - 1],
-      unreadCount: clinicUnreadCount(messages),
-    });
+      convos.push({
+        patient,
+        channel,
+        threadKey,
+        messages,
+        latest: messages[messages.length - 1],
+        unreadCount: clinicUnreadCount(messages),
+      });
+    }
   }
 
   convos.sort((a, b) => {
@@ -64,12 +82,20 @@ export function useClinicInboxUnread() {
   const clinicName = useStore((state) => state.currentClinicUser.clinicName);
 
   return useMemo(() => {
-    let total = 0;
+    let transplantCenterUnread = 0;
+    let patientUnread = 0;
     for (const patient of clinicScopedPatients(patients, clinicName)) {
-      total += clinicUnreadCount(
+      transplantCenterUnread += clinicUnreadCount(
         patient.messages.filter((message) => message.threadKey === CLINIC_THREAD_KEY)
       );
+      patientUnread += clinicUnreadCount(
+        patient.messages.filter((message) => message.threadKey === CLINIC_PATIENT_THREAD_KEY)
+      );
     }
-    return { total };
+    return {
+      transplantCenterUnread,
+      patientUnread,
+      total: transplantCenterUnread + patientUnread,
+    };
   }, [patients, clinicName]);
 }
