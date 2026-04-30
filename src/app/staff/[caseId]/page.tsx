@@ -668,12 +668,19 @@ function InfoRow({
   children: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 text-sm xl:grid-cols-1 xl:gap-0.5 2xl:grid-cols-[7rem_minmax(0,1fr)] 2xl:gap-3">
+    <div
+      className={clsx(
+        'grid text-sm',
+        nowrap
+          ? 'grid-cols-1 gap-0.5'
+          : 'grid-cols-[8rem_minmax(0,1fr)] gap-3 xl:grid-cols-1 xl:gap-0.5 2xl:grid-cols-[7rem_minmax(0,1fr)] 2xl:gap-3'
+      )}
+    >
       <dt className="text-slate-500">{label}</dt>
       <dd
         className={clsx(
           'min-w-0 font-medium text-slate-900',
-          nowrap ? 'truncate whitespace-nowrap' : 'break-words'
+          nowrap ? 'whitespace-nowrap' : 'break-words'
         )}
         title={typeof children === 'string' ? children : undefined}
       >

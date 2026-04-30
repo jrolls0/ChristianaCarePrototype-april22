@@ -429,8 +429,8 @@ function PatientIdentity({ patient }: { patient: Patient }) {
         <p className="truncate font-semibold text-slate-900">
           {patient.firstName} {patient.lastName}
         </p>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-          {alertBadge}
+        {alertBadge && <div className="mt-1">{alertBadge}</div>}
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
           <span className="inline-flex min-w-0 items-center gap-1.5">
             <Stethoscope className="h-3 w-3 shrink-0 text-slate-400" />
             <span className="truncate">
