@@ -201,7 +201,7 @@ function PatientHeader({ patient }: { patient: Patient }) {
         </div>
       </div>
 
-      <div className="grid gap-x-10 gap-y-6 px-5 py-5 md:grid-cols-2 2xl:grid-cols-4 2xl:gap-x-12">
+      <div className="grid gap-x-10 gap-y-6 px-5 py-5 md:grid-cols-2 xl:grid-cols-4 2xl:gap-x-12">
         <HeaderColumn title="Patient Contact">
           <InfoRow label="DOB">{formatDob(patient.dob)}</InfoRow>
           <InfoRow label="Phone" nowrap>{patient.phone || 'Not provided'}</InfoRow>
@@ -254,7 +254,7 @@ function EmergencyContactColumn({ patient }: { patient: Patient }) {
 
 function HeaderColumn({ children, title }: { children: React.ReactNode; title: string }) {
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3">
       <h3 className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-700">
         {title}
       </h3>
@@ -273,12 +273,16 @@ function InfoRow({
   nowrap?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-[8.75rem_minmax(0,1fr)] gap-2 text-sm">
-      <dt className="whitespace-nowrap text-slate-500">{label}</dt>
+    <div className="grid min-w-0 grid-cols-1 gap-1 text-sm min-[1900px]:grid-cols-[9.5rem_minmax(0,1fr)] min-[1900px]:gap-2">
+      <dt className="text-slate-500 min-[1900px]:whitespace-nowrap">
+        {label}
+      </dt>
       <dd
         className={clsx(
           'min-w-0 font-medium text-slate-900',
-          nowrap ? 'whitespace-nowrap' : 'break-words'
+          nowrap
+            ? 'break-words min-[1900px]:whitespace-nowrap min-[1900px]:break-normal'
+            : 'break-words'
         )}
         title={typeof children === 'string' ? children : undefined}
       >
