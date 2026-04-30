@@ -414,8 +414,13 @@ export const useStore = create<DemoState>()(
             email: data.email,
             phone: data.phone || match.phone,
             dob: data.dob || match.dob,
+            address: data.address || match.address,
             preferredLanguage:
               data.preferredLanguage || match.preferredLanguage,
+            primaryCarePhysician:
+              data.primaryCarePhysician || match.primaryCarePhysician,
+            insuranceProvider:
+              data.insuranceProvider || match.insuranceProvider,
             portalAccount,
             hasCompletedOnboarding: match.hasCompletedOnboarding ?? false,
             stage: wasNewReferral ? 'onboarding' : normalizePatientStage(match.stage),
@@ -455,6 +460,7 @@ export const useStore = create<DemoState>()(
           email: data.email,
           phone: data.phone ?? '',
           dob: data.dob ?? '',
+          address: data.address,
           preferredLanguage: data.preferredLanguage ?? 'English',
           referralSource: 'self',
           referringClinic: data.referringClinic,
@@ -463,6 +469,8 @@ export const useStore = create<DemoState>()(
           duswEmail: data.duswEmail,
           nephrologistName: data.nephrologistName,
           nephrologistEmail: data.nephrologistEmail,
+          primaryCarePhysician: data.primaryCarePhysician,
+          insuranceProvider: data.insuranceProvider,
           referralDate: now,
           stage: 'onboarding',
           daysInStage: 0,

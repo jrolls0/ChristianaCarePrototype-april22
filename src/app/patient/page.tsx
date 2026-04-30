@@ -145,12 +145,15 @@ type RegistrationPayload = {
   lastName: string;
   phone?: string;
   dob?: string;
+  address?: string;
   preferredLanguage?: 'English' | 'Spanish';
   referringClinic?: string;
   duswName?: string;
   duswEmail?: string;
   nephrologistName?: string;
   nephrologistEmail?: string;
+  primaryCarePhysician?: string;
+  insuranceProvider?: string;
 };
 
 type CarePartnerInvitePayload = {
@@ -859,12 +862,15 @@ export default function MobilePrototypePage() {
       password: payload.password,
       phone: payload.phone,
       dob: payload.dob,
+      address: payload.address,
       preferredLanguage: payload.preferredLanguage,
       referringClinic: payload.referringClinic,
       duswName: payload.duswName,
       duswEmail: payload.duswEmail,
       nephrologistName: payload.nephrologistName,
       nephrologistEmail: payload.nephrologistEmail,
+      primaryCarePhysician: payload.primaryCarePhysician,
+      insuranceProvider: payload.insuranceProvider,
     });
     if (!result.ok) return result;
 
@@ -1067,7 +1073,9 @@ export default function MobilePrototypePage() {
                   patient={currentPatient}
                 />
               )}
-              {activeTab === 'profile' && <ProfileTab displayName={displayName} username={username} />}
+              {activeTab === 'profile' && (
+                <ProfileTab displayName={displayName} patient={currentPatient} username={username} />
+              )}
               {activeTab === 'help' && <HelpTab />}
             </div>
 
@@ -1499,12 +1507,15 @@ function RegistrationScreen({
         lastName: lastName.trim(),
         phone: phoneNumber.trim() || undefined,
         dob: dateOfBirth || undefined,
+        address: address.trim() || undefined,
         preferredLanguage: 'English',
         referringClinic: clinicName,
         duswName,
         duswEmail,
         nephrologistName: nephName,
         nephrologistEmail: nephEmail,
+        primaryCarePhysician: primaryCarePhysician.trim() || undefined,
+        insuranceProvider: insuranceProvider.trim() || undefined,
       });
       if (!result.ok) {
         setFieldErrors({
@@ -4472,7 +4483,15 @@ function initialsFor(name: string) {
   return name.slice(0, 2).toUpperCase();
 }
 
-function ProfileTab({ displayName, username }: { displayName: string; username: string }) {
+function ProfileTab({
+  displayName,
+  patient,
+  username,
+}: {
+  displayName: string;
+  patient: StorePatient | null;
+  username: string;
+}) {
   type ProfilePhysician = {
     id: string;
     name: string;
@@ -4488,6 +4507,7 @@ function ProfileTab({ displayName, username }: { displayName: string; username: 
     emergencyContactName: string;
     emergencyContactRelationship: string;
     emergencyContactPhone: string;
+    preferredLanguage: string;
     height: string;
     weight: string;
     nephrologistName: string;
@@ -4497,6 +4517,7 @@ function ProfileTab({ displayName, username }: { displayName: string; username: 
     dialysisType: string;
     dialysisStartDate: string;
     lastGfr: string;
+    insuranceProvider: string;
     diagnosedConditions: string;
     pastSurgeries: string;
     socialWorkerName: string;
@@ -4506,39 +4527,63 @@ function ProfileTab({ displayName, username }: { displayName: string; username: 
     dialysisClinicAddress: string;
   };
 
-  const seedProfile: ProfileData = {
-    fullName: displayName,
-    dateOfBirth: '1976-04-22',
-    address: '1287 Harbor Ridge Dr, Wilmington, DE 19808',
-    email: username || 'jeremy.rolls@portal.test',
-    phone: '(302) 555-0198',
-    emergencyContactName: 'Maya Rolls',
-    emergencyContactRelationship: 'Spouse',
-    emergencyContactPhone: '(302) 555-0134',
-    height: "5' 8\"",
-    weight: '168',
-    nephrologistName: 'Dr. Priya Menon',
-    pcpName: 'Dr. Steven Patel',
-    otherPhysicians: [
-      { id: 'phys-1', name: 'Dr. Rachel Kim', specialty: 'Cardiology' },
-      { id: 'phys-2', name: 'Dr. Luis Martinez', specialty: 'Endocrinology' },
-    ],
-    onDialysis: true,
-    dialysisType: 'Hemodialysis',
-    dialysisStartDate: 'March 2024',
-    lastGfr: '14',
-    diagnosedConditions: 'Chronic kidney disease, stage 5; hypertension',
-    pastSurgeries: 'AV fistula placement (2024)',
-    socialWorkerName: 'Jordan Lee, LCSW',
-    socialWorkerEmail: 'jordan.lee@riverdialysis.org',
-    socialWorkerPhone: '(302) 555-0172',
-    dialysisClinicName: 'River Dialysis Center',
-    dialysisClinicAddress: '925 North Market St, Wilmington, DE 19801',
-  };
+  const derivedProfile = useMemo<ProfileData>(() => {
+    const screening = patient?.screeningResponses;
+    const feet = screening?.heightFeet;
+    const inches = screening?.heightInches;
+    const height =
+      screening?.heightUnknown || (feet == null && inches == null)
+        ? ''
+        : `${feet ?? 0}' ${inches ?? 0}"`;
+    const weight =
+      screening?.weightUnknown || screening?.weightPounds == null
+        ? ''
+        : String(screening.weightPounds);
+    const lastGfr =
+      screening?.egfrUnknown || screening?.egfr == null ? '' : String(screening.egfr);
+    const fullName = patient
+      ? `${patient.firstName} ${patient.lastName}`.trim()
+      : displayName;
 
-  const [profile, setProfile] = useState<ProfileData>(seedProfile);
-  const [draftProfile, setDraftProfile] = useState<ProfileData>(seedProfile);
+    return {
+      fullName: fullName || displayName,
+      dateOfBirth: patient?.dob ?? '',
+      address: patient?.address ?? '',
+      email: patient?.email || patient?.portalAccount?.username || username,
+      phone: patient?.phone ?? '',
+      emergencyContactName: patient?.emergencyContact?.name ?? '',
+      emergencyContactRelationship: patient?.emergencyContact?.relationship ?? '',
+      emergencyContactPhone: patient?.emergencyContact?.phone ?? '',
+      preferredLanguage: patient?.preferredLanguage ?? 'English',
+      height,
+      weight,
+      nephrologistName: patient?.nephrologistName ?? '',
+      pcpName: patient?.primaryCarePhysician ?? '',
+      otherPhysicians: [],
+      onDialysis: screening ? screening.onDialysis === 'yes' : Boolean(patient?.referringClinic),
+      dialysisType: patient?.referringClinic ? 'Not specified' : '',
+      dialysisStartDate: screening?.dialysisStart ?? '',
+      lastGfr,
+      insuranceProvider: patient?.insuranceProvider ?? '',
+      diagnosedConditions: screening?.otherConcerns ?? '',
+      pastSurgeries: '',
+      socialWorkerName: patient?.duswName ?? '',
+      socialWorkerEmail: patient?.duswEmail ?? '',
+      socialWorkerPhone: '',
+      dialysisClinicName: patient?.referringClinic ?? '',
+      dialysisClinicAddress: '',
+    };
+  }, [displayName, patient, username]);
+
+  const [profile, setProfile] = useState<ProfileData>(derivedProfile);
+  const [draftProfile, setDraftProfile] = useState<ProfileData>(derivedProfile);
   const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (isEditing) return;
+    setProfile(derivedProfile);
+    setDraftProfile(derivedProfile);
+  }, [derivedProfile, isEditing]);
 
   function beginEditing() {
     setDraftProfile(profile);
@@ -4630,6 +4675,12 @@ function ProfileTab({ displayName, username }: { displayName: string; username: 
           isEditing={isEditing}
           multiline
           onChange={(value) => updateDraft('address', value)}
+        />
+        <EditableProfileField
+          label="Preferred Language"
+          value={profileValue('preferredLanguage')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('preferredLanguage', value)}
         />
       </ProfileSectionCard>
 
@@ -4734,6 +4785,12 @@ function ProfileTab({ displayName, username }: { displayName: string; username: 
           onChange={(value) => updateDraft('lastGfr', value)}
         />
         <EditableProfileField
+          label="Insurance Provider"
+          value={profileValue('insuranceProvider')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('insuranceProvider', value)}
+        />
+        <EditableProfileField
           label="Diagnosed Conditions"
           value={profileValue('diagnosedConditions')}
           isEditing={isEditing}
@@ -4753,25 +4810,29 @@ function ProfileTab({ displayName, username }: { displayName: string; username: 
         <div className="space-y-2">
           <div className="rounded-xl bg-[#f4f7fb] p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned Social Worker</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">{profileValue('socialWorkerName')}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">
+              {profileValue('socialWorkerName') || 'Not specified'}
+            </p>
             <div className="mt-1 space-y-1 text-xs text-slate-500">
               <p className="flex items-center gap-1.5">
                 <Mail className="h-3.5 w-3.5 text-slate-400" />
-                {profileValue('socialWorkerEmail')}
+                {profileValue('socialWorkerEmail') || 'Not specified'}
               </p>
               <p className="flex items-center gap-1.5">
                 <Phone className="h-3.5 w-3.5 text-slate-400" />
-                {profileValue('socialWorkerPhone')}
+                {profileValue('socialWorkerPhone') || 'Not specified'}
               </p>
             </div>
           </div>
 
           <div className="rounded-xl bg-[#f4f7fb] p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dialysis Clinic</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">{profileValue('dialysisClinicName')}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">
+              {profileValue('dialysisClinicName') || 'Not specified'}
+            </p>
             <p className="mt-1 flex items-start gap-1.5 text-xs text-slate-500">
               <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-              <span>{profileValue('dialysisClinicAddress')}</span>
+              <span>{profileValue('dialysisClinicAddress') || 'Not specified'}</span>
             </p>
           </div>
         </div>

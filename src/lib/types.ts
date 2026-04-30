@@ -117,6 +117,7 @@ export interface Patient {
   email: string;
   phone: string;
   dob: string;
+  address?: string;
   preferredLanguage: 'English' | 'Spanish';
   referralSource: ReferralSource;
   referringClinic?: string;
@@ -125,6 +126,8 @@ export interface Patient {
   duswEmail?: string;
   nephrologistName?: string;
   nephrologistEmail?: string;
+  primaryCarePhysician?: string;
+  insuranceProvider?: string;
   referralDate: string;
   stage: PatientStage;
   daysInStage: number;
@@ -168,12 +171,15 @@ export interface SelfRegistration {
   password: string;
   phone?: string;
   dob?: string;
+  address?: string;
   preferredLanguage?: 'English' | 'Spanish';
   referringClinic?: string;
   duswName?: string;
   duswEmail?: string;
   nephrologistName?: string;
   nephrologistEmail?: string;
+  primaryCarePhysician?: string;
+  insuranceProvider?: string;
 }
 
 export interface ClinicUser {
