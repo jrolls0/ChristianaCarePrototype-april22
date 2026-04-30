@@ -412,27 +412,33 @@ export default function StaffDashboardPage() {
 }
 
 function PatientIdentity({ patient }: { patient: Patient }) {
+  const alertBadge =
+    patient.stage === 'initial-screening' ? (
+      <ScreeningReviewBadge className="px-2 py-0.5" />
+    ) : patient.isStuck ? (
+      <StuckBadge days={patient.daysInStage} className="px-2 py-0.5" />
+    ) : null;
+
   return (
     <div className="flex items-center gap-3">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3399e6] to-[#1a66cc] text-xs font-semibold text-white shadow-sm">
         {patient.firstName[0]}
         {patient.lastName[0]}
       </div>
-      <div className="min-w-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-semibold text-slate-900">
-          <span className="min-w-[8rem] max-w-full shrink-0 truncate">
-            {patient.firstName} {patient.lastName}
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-semibold text-slate-900">
+          {patient.firstName} {patient.lastName}
+        </p>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+          {alertBadge}
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <Stethoscope className="h-3 w-3 shrink-0 text-slate-400" />
+            <span className="truncate">
+              {patient.nephrologistName ?? 'No nephrologist on file'}
+            </span>
           </span>
-          {patient.stage === 'initial-screening' && <ScreeningReviewBadge />}
-          {patient.stage !== 'initial-screening' && patient.isStuck && (
-            <StuckBadge days={patient.daysInStage} />
-          )}
-        </div>
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Stethoscope className="h-3 w-3 text-slate-400" />
-          {patient.nephrologistName ?? 'No nephrologist on file'}
           <span className="text-slate-300">·</span>
-          <span>{patient.preferredLanguage}</span>
+          <span className="shrink-0">{patient.preferredLanguage}</span>
         </div>
       </div>
     </div>
