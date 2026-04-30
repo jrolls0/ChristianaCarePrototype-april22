@@ -110,6 +110,25 @@ export interface EndReferralRecord {
   endedBy: string;
 }
 
+export interface PatientProfilePhysician {
+  id: string;
+  name: string;
+  specialty: string;
+}
+
+export interface PatientProfileOverrides {
+  height?: string;
+  weight?: string;
+  dialysisType?: string;
+  dialysisStartDate?: string;
+  lastGfr?: string;
+  diagnosedConditions?: string;
+  pastSurgeries?: string;
+  socialWorkerPhone?: string;
+  dialysisClinicAddress?: string;
+  otherPhysicians?: PatientProfilePhysician[];
+}
+
 export interface Patient {
   id: string;
   firstName: string;
@@ -148,6 +167,7 @@ export interface Patient {
   emergencyContactConsent?: boolean;
   screeningResponses?: ScreeningResponses;
   endReferral?: EndReferralRecord;
+  profileOverrides?: PatientProfileOverrides;
 }
 
 export interface ReferralSubmission {
@@ -213,6 +233,29 @@ export interface DemoState {
     consents: { emailConsent: boolean; smsConsent: boolean; phoneConsent: boolean }
   ) => void;
   saveEmergencyContact: (patientId: string, contact: EmergencyContact) => void;
+  updatePatientProfile: (
+    patientId: string,
+    updates: Partial<
+      Pick<
+        Patient,
+        | 'firstName'
+        | 'lastName'
+        | 'email'
+        | 'phone'
+        | 'dob'
+        | 'address'
+        | 'preferredLanguage'
+        | 'primaryCarePhysician'
+        | 'insuranceProvider'
+        | 'referringClinic'
+        | 'duswName'
+        | 'duswEmail'
+        | 'nephrologistName'
+        | 'emergencyContact'
+        | 'profileOverrides'
+      >
+    > & { screeningResponses?: Partial<ScreeningResponses> }
+  ) => void;
   markOnboardingComplete: (patientId: string) => void;
   setLastPatientTab: (tab: PatientTab) => void;
   completeTodo: (patientId: string, todoId: string) => void;

@@ -555,6 +555,60 @@ export const useStore = create<DemoState>()(
         });
       },
 
+      updatePatientProfile: (patientId, updates) => {
+        const now = new Date().toISOString();
+        set({
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId) return p;
+
+            const email = updates.email?.trim() || p.email;
+            const firstName = updates.firstName?.trim() || p.firstName;
+            const lastName = updates.lastName?.trim() || p.lastName;
+            const patientFullName = `${firstName} ${lastName}`.trim();
+            const mergedOverrides = {
+              ...(p.profileOverrides ?? {}),
+              ...(updates.profileOverrides ?? {}),
+            };
+            const nextScreeningResponses =
+              updates.screeningResponses && p.screeningResponses
+                ? { ...p.screeningResponses, ...updates.screeningResponses }
+                : p.screeningResponses;
+
+            return {
+              ...p,
+              ...updates,
+              firstName,
+              lastName,
+              email,
+              phone: updates.phone ?? p.phone,
+              dob: updates.dob ?? p.dob,
+              address: updates.address,
+              preferredLanguage: updates.preferredLanguage ?? p.preferredLanguage,
+              primaryCarePhysician: updates.primaryCarePhysician,
+              insuranceProvider: updates.insuranceProvider,
+              referringClinic: updates.referringClinic,
+              duswName: updates.duswName,
+              duswEmail: updates.duswEmail,
+              nephrologistName: updates.nephrologistName,
+              emergencyContact: updates.emergencyContact,
+              emergencyContactConsent:
+                updates.emergencyContact?.consented ?? p.emergencyContactConsent,
+              portalAccount: p.portalAccount
+                ? { ...p.portalAccount, username: normalizeUsername(email) }
+                : p.portalAccount,
+              messages: p.messages.map((message) =>
+                message.fromRole === 'patient'
+                  ? { ...message, fromName: patientFullName }
+                  : message
+              ),
+              screeningResponses: nextScreeningResponses,
+              profileOverrides: mergedOverrides,
+              lastActivityAt: now,
+            };
+          }),
+        });
+      },
+
       completeTodo: (patientId, todoId) => {
         const now = new Date().toISOString();
         set({

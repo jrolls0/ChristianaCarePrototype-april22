@@ -673,6 +673,7 @@ export default function MobilePrototypePage() {
   const authenticatePatientAction = useStore((s) => s.authenticatePatient);
   const saveCommunicationConsentsAction = useStore((s) => s.saveCommunicationConsents);
   const saveEmergencyContactAction = useStore((s) => s.saveEmergencyContact);
+  const updatePatientProfileAction = useStore((s) => s.updatePatientProfile);
   const markOnboardingCompleteAction = useStore((s) => s.markOnboardingComplete);
   const setLastPatientTabAction = useStore((s) => s.setLastPatientTab);
   const saveScreeningResponsesAction = useStore((s) => s.saveScreeningResponses);
@@ -1074,7 +1075,21 @@ export default function MobilePrototypePage() {
                 />
               )}
               {activeTab === 'profile' && (
-                <ProfileTab displayName={displayName} patient={currentPatient} username={username} />
+                <ProfileTab
+                  displayName={displayName}
+                  onProfileSaved={(nextName, nextEmail) => {
+                    setDisplayName(nextName);
+                    setRegisteredDisplayName(nextName);
+                    setRegisteredEmail(nextEmail);
+                    setUsername(nextEmail);
+                    if (typeof window !== 'undefined' && window.localStorage.getItem(SAVED_USERNAME_KEY)) {
+                      window.localStorage.setItem(SAVED_USERNAME_KEY, nextEmail);
+                    }
+                  }}
+                  patient={currentPatient}
+                  updatePatientProfile={updatePatientProfileAction}
+                  username={username}
+                />
               )}
               {activeTab === 'help' && <HelpTab />}
             </div>
@@ -4485,11 +4500,15 @@ function initialsFor(name: string) {
 
 function ProfileTab({
   displayName,
+  onProfileSaved,
   patient,
+  updatePatientProfile,
   username,
 }: {
   displayName: string;
+  onProfileSaved: (displayName: string, username: string) => void;
   patient: StorePatient | null;
+  updatePatientProfile: ReturnType<typeof useStore.getState>['updatePatientProfile'];
   username: string;
 }) {
   type ProfilePhysician = {
@@ -4506,6 +4525,7 @@ function ProfileTab({
     phone: string;
     emergencyContactName: string;
     emergencyContactRelationship: string;
+    emergencyContactEmail: string;
     emergencyContactPhone: string;
     preferredLanguage: string;
     height: string;
@@ -4527,20 +4547,45 @@ function ProfileTab({
     dialysisClinicAddress: string;
   };
 
+  function splitProfileName(value: string) {
+    const parts = value.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return { firstName: patient?.firstName ?? '', lastName: patient?.lastName ?? '' };
+    if (parts.length === 1) return { firstName: parts[0], lastName: patient?.lastName ?? '' };
+    return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+  }
+
+  function parseProfileNumber(value: string): number | undefined {
+    const parsed = Number.parseInt(value.replace(/[^\d]/g, ''), 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  function parseProfileHeight(value: string): { feet?: number; inches?: number } {
+    const matches = value.match(/\d+/g);
+    if (!matches || matches.length === 0) return {};
+    return {
+      feet: Number.parseInt(matches[0], 10),
+      inches: Number.parseInt(matches[1] ?? '0', 10),
+    };
+  }
+
   const derivedProfile = useMemo<ProfileData>(() => {
     const screening = patient?.screeningResponses;
+    const overrides = patient?.profileOverrides;
     const feet = screening?.heightFeet;
     const inches = screening?.heightInches;
-    const height =
+    const heightFromScreening =
       screening?.heightUnknown || (feet == null && inches == null)
         ? ''
         : `${feet ?? 0}' ${inches ?? 0}"`;
-    const weight =
+    const weightFromScreening =
       screening?.weightUnknown || screening?.weightPounds == null
         ? ''
         : String(screening.weightPounds);
-    const lastGfr =
+    const gfrFromScreening =
       screening?.egfrUnknown || screening?.egfr == null ? '' : String(screening.egfr);
+    const height = overrides?.height ?? heightFromScreening;
+    const weight = overrides?.weight ?? weightFromScreening;
+    const lastGfr = overrides?.lastGfr ?? gfrFromScreening;
     const fullName = patient
       ? `${patient.firstName} ${patient.lastName}`.trim()
       : displayName;
@@ -4553,25 +4598,26 @@ function ProfileTab({
       phone: patient?.phone ?? '',
       emergencyContactName: patient?.emergencyContact?.name ?? '',
       emergencyContactRelationship: patient?.emergencyContact?.relationship ?? '',
+      emergencyContactEmail: patient?.emergencyContact?.email ?? '',
       emergencyContactPhone: patient?.emergencyContact?.phone ?? '',
       preferredLanguage: patient?.preferredLanguage ?? 'English',
       height,
       weight,
       nephrologistName: patient?.nephrologistName ?? '',
       pcpName: patient?.primaryCarePhysician ?? '',
-      otherPhysicians: [],
+      otherPhysicians: overrides?.otherPhysicians ?? [],
       onDialysis: screening ? screening.onDialysis === 'yes' : Boolean(patient?.referringClinic),
-      dialysisType: patient?.referringClinic ? 'Not specified' : '',
-      dialysisStartDate: screening?.dialysisStart ?? '',
+      dialysisType: overrides?.dialysisType ?? (patient?.referringClinic ? 'Not specified' : ''),
+      dialysisStartDate: overrides?.dialysisStartDate ?? screening?.dialysisStart ?? '',
       lastGfr,
       insuranceProvider: patient?.insuranceProvider ?? '',
-      diagnosedConditions: screening?.otherConcerns ?? '',
-      pastSurgeries: '',
+      diagnosedConditions: overrides?.diagnosedConditions ?? screening?.otherConcerns ?? '',
+      pastSurgeries: overrides?.pastSurgeries ?? '',
       socialWorkerName: patient?.duswName ?? '',
       socialWorkerEmail: patient?.duswEmail ?? '',
-      socialWorkerPhone: '',
+      socialWorkerPhone: overrides?.socialWorkerPhone ?? '',
       dialysisClinicName: patient?.referringClinic ?? '',
-      dialysisClinicAddress: '',
+      dialysisClinicAddress: overrides?.dialysisClinicAddress ?? '',
     };
   }, [displayName, patient, username]);
 
@@ -4596,6 +4642,79 @@ function ProfileTab({
   }
 
   function saveProfile() {
+    if (patient) {
+      const { firstName, lastName } = splitProfileName(draftProfile.fullName);
+      const email = draftProfile.email.trim() || patient.email;
+      const emergencyContactHasValue = Boolean(
+        draftProfile.emergencyContactName.trim() ||
+          draftProfile.emergencyContactRelationship.trim() ||
+          draftProfile.emergencyContactEmail.trim() ||
+          draftProfile.emergencyContactPhone.trim()
+      );
+      const heightParts = parseProfileHeight(draftProfile.height);
+      const weightPounds = parseProfileNumber(draftProfile.weight);
+      const egfr = parseProfileNumber(draftProfile.lastGfr);
+
+      updatePatientProfile(patient.id, {
+        firstName,
+        lastName,
+        email,
+        phone: draftProfile.phone.trim(),
+        dob: draftProfile.dateOfBirth,
+        address: draftProfile.address.trim() || undefined,
+        preferredLanguage:
+          draftProfile.preferredLanguage.trim().toLowerCase() === 'spanish'
+            ? 'Spanish'
+            : 'English',
+        primaryCarePhysician: draftProfile.pcpName.trim() || undefined,
+        insuranceProvider: draftProfile.insuranceProvider.trim() || undefined,
+        referringClinic: draftProfile.dialysisClinicName.trim() || undefined,
+        duswName: draftProfile.socialWorkerName.trim() || undefined,
+        duswEmail: draftProfile.socialWorkerEmail.trim() || undefined,
+        nephrologistName: draftProfile.nephrologistName.trim() || undefined,
+        emergencyContact: emergencyContactHasValue
+          ? {
+              name: draftProfile.emergencyContactName.trim(),
+              relationship: draftProfile.emergencyContactRelationship.trim() || undefined,
+              email: draftProfile.emergencyContactEmail.trim(),
+              phone: draftProfile.emergencyContactPhone.trim(),
+              consented: true,
+            }
+          : undefined,
+        screeningResponses: {
+          ...(draftProfile.dialysisStartDate.trim()
+            ? { dialysisStart: draftProfile.dialysisStartDate.trim() }
+            : {}),
+          ...(heightParts.feet != null
+            ? {
+                heightFeet: heightParts.feet,
+                heightInches: heightParts.inches ?? 0,
+                heightUnknown: false,
+              }
+            : {}),
+          ...(weightPounds != null
+            ? { weightPounds, weightUnknown: false }
+            : {}),
+          ...(egfr != null
+            ? { egfr, egfrUnknown: false }
+            : {}),
+          otherConcerns: draftProfile.diagnosedConditions.trim() || undefined,
+        },
+        profileOverrides: {
+          height: draftProfile.height.trim(),
+          weight: draftProfile.weight.trim(),
+          dialysisType: draftProfile.dialysisType.trim(),
+          dialysisStartDate: draftProfile.dialysisStartDate.trim(),
+          lastGfr: draftProfile.lastGfr.trim(),
+          diagnosedConditions: draftProfile.diagnosedConditions.trim(),
+          pastSurgeries: draftProfile.pastSurgeries.trim(),
+          socialWorkerPhone: draftProfile.socialWorkerPhone.trim(),
+          dialysisClinicAddress: draftProfile.dialysisClinicAddress.trim(),
+          otherPhysicians: draftProfile.otherPhysicians,
+        },
+      });
+      onProfileSaved(`${firstName} ${lastName}`.trim(), email);
+    }
     setProfile(draftProfile);
     setIsEditing(false);
   }
@@ -4715,6 +4834,13 @@ function ProfileTab({
           onChange={(value) => updateDraft('emergencyContactRelationship', value)}
         />
         <EditableProfileField
+          label="Email"
+          type="email"
+          value={profileValue('emergencyContactEmail')}
+          isEditing={isEditing}
+          onChange={(value) => updateDraft('emergencyContactEmail', value)}
+        />
+        <EditableProfileField
           label="Phone"
           type="tel"
           value={profileValue('emergencyContactPhone')}
@@ -4810,30 +4936,47 @@ function ProfileTab({
         <div className="space-y-2">
           <div className="rounded-xl bg-[#f4f7fb] p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned Social Worker</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">
-              {profileValue('socialWorkerName') || 'Not specified'}
-            </p>
-            <div className="mt-1 space-y-1 text-xs text-slate-500">
-              <p className="flex items-center gap-1.5">
-                <Mail className="h-3.5 w-3.5 text-slate-400" />
-                {profileValue('socialWorkerEmail') || 'Not specified'}
-              </p>
-              <p className="flex items-center gap-1.5">
-                <Phone className="h-3.5 w-3.5 text-slate-400" />
-                {profileValue('socialWorkerPhone') || 'Not specified'}
-              </p>
+            <div className="mt-2 space-y-2">
+              <EditableProfileField
+                label="Name"
+                value={profileValue('socialWorkerName')}
+                isEditing={isEditing}
+                onChange={(value) => updateDraft('socialWorkerName', value)}
+              />
+              <EditableProfileField
+                label="Email"
+                type="email"
+                value={profileValue('socialWorkerEmail')}
+                isEditing={isEditing}
+                onChange={(value) => updateDraft('socialWorkerEmail', value)}
+              />
+              <EditableProfileField
+                label="Phone"
+                type="tel"
+                value={profileValue('socialWorkerPhone')}
+                isEditing={isEditing}
+                onChange={(value) => updateDraft('socialWorkerPhone', value)}
+              />
             </div>
           </div>
 
           <div className="rounded-xl bg-[#f4f7fb] p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dialysis Clinic</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">
-              {profileValue('dialysisClinicName') || 'Not specified'}
-            </p>
-            <p className="mt-1 flex items-start gap-1.5 text-xs text-slate-500">
-              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-              <span>{profileValue('dialysisClinicAddress') || 'Not specified'}</span>
-            </p>
+            <div className="mt-2 space-y-2">
+              <EditableProfileField
+                label="Name"
+                value={profileValue('dialysisClinicName')}
+                isEditing={isEditing}
+                onChange={(value) => updateDraft('dialysisClinicName', value)}
+              />
+              <EditableProfileField
+                label="Address"
+                value={profileValue('dialysisClinicAddress')}
+                isEditing={isEditing}
+                multiline
+                onChange={(value) => updateDraft('dialysisClinicAddress', value)}
+              />
+            </div>
           </div>
         </div>
       </ProfileSectionCard>
