@@ -115,6 +115,10 @@ function withDerivedPatientFields(patient: Patient): Patient {
 
   return {
     ...patient,
+    messages: patient.messages.map((message) => ({
+      ...message,
+      readByClinic: message.readByClinic ?? message.fromRole === 'clinic',
+    })),
     stage: normalizePatientStage(patient.stage),
     roiSigned,
     roiSignedAt,
@@ -238,6 +242,7 @@ export const useStore = create<DemoState>()(
             sentAt: now,
             readByPatient: false,
             readByStaff: true,
+            readByClinic: true,
           };
           const hasDuswWelcome = match.messages.some((m) => m.threadKey === 'dusw');
           const duswWelcomeMsg: Message | null = hasDuswWelcome
@@ -252,6 +257,7 @@ export const useStore = create<DemoState>()(
                 sentAt: now,
                 readByPatient: false,
                 readByStaff: true,
+                readByClinic: true,
               };
           const seededInitialTodos: Todo[] =
             match.todos.length === 0
@@ -340,6 +346,7 @@ export const useStore = create<DemoState>()(
               sentAt: now,
               readByPatient: false,
               readByStaff: true,
+              readByClinic: true,
             },
           ],
           documents: [],
@@ -430,6 +437,7 @@ export const useStore = create<DemoState>()(
                     sentAt: now,
                     readByPatient: true,
                     readByStaff: false,
+                    readByClinic: true,
                   },
                 ]
               : match.messages,
@@ -475,6 +483,7 @@ export const useStore = create<DemoState>()(
               sentAt: now,
               readByPatient: true,
               readByStaff: false,
+              readByClinic: true,
             },
           ],
           documents: [],
@@ -682,6 +691,7 @@ export const useStore = create<DemoState>()(
           sentAt: now,
           readByPatient: fromRole === 'patient',
           readByStaff: fromRole === 'staff',
+          readByClinic: fromRole === 'clinic',
         };
         set({
           patients: replacePatient(state.patients, {
@@ -704,7 +714,9 @@ export const useStore = create<DemoState>()(
                       ? m
                       : byRole === 'patient'
                         ? { ...m, readByPatient: true }
-                        : { ...m, readByStaff: true }
+                        : byRole === 'clinic'
+                          ? { ...m, readByClinic: true }
+                          : { ...m, readByStaff: true }
                   ),
                 }
           ),

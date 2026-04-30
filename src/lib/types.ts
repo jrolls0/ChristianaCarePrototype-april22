@@ -54,6 +54,7 @@ export interface Message {
   sentAt: string;
   readByPatient: boolean;
   readByStaff: boolean;
+  readByClinic?: boolean;
 }
 
 export interface DocumentRecord {
@@ -225,7 +226,11 @@ export interface DemoState {
     threadKey?: ThreadKey
   ) => void;
   markMessagesRead: (patientId: string, byRole: 'patient' | 'staff') => void;
-  markThreadRead: (patientId: string, threadKey: ThreadKey, byRole: 'patient' | 'staff') => void;
+  markThreadRead: (
+    patientId: string,
+    threadKey: ThreadKey,
+    byRole: 'patient' | 'staff' | 'clinic'
+  ) => void;
   uploadDocument: (
     patientId: string,
     name: string,

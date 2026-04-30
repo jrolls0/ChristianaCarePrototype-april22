@@ -281,6 +281,7 @@ interface SeedMessageInput {
   hoursAgo: number;
   readByPatient?: boolean;
   readByStaff?: boolean;
+  readByClinic?: boolean;
 }
 
 const buildMessage = ({
@@ -293,6 +294,7 @@ const buildMessage = ({
   hoursAgo,
   readByPatient,
   readByStaff,
+  readByClinic,
 }: SeedMessageInput): Message => ({
   id: msgId(patientId, slug),
   threadId: threadIdFor(patientId, threadKey),
@@ -304,6 +306,7 @@ const buildMessage = ({
   readByPatient:
     readByPatient ?? (fromRole === 'patient' ? true : false),
   readByStaff: readByStaff ?? (fromRole === 'staff' ? true : false),
+  readByClinic: readByClinic ?? (fromRole === 'clinic' ? true : false),
 });
 
 const buildDoc = (
@@ -395,6 +398,18 @@ const buildMaria = (): Patient => {
         hoursAgo: 2 * 24,
         readByPatient: false,
         readByStaff: true,
+      }),
+      buildMessage({
+        patientId: id,
+        slug: 'clinic-insurance-check',
+        threadKey: 'clinic-staff',
+        fromRole: 'staff',
+        fromName: STAFF_NAME,
+        body:
+          'Hi Sarah — Maria is still missing her insurance card upload. If she brings it to dialysis, please remind her she can upload it in the patient portal.',
+        hoursAgo: 20,
+        readByStaff: true,
+        readByClinic: false,
       }),
     ],
     documents: [
@@ -554,6 +569,18 @@ const buildLinda = (): Patient => {
           "Hi Linda — all your onboarding tasks are done, thank you. We're now waiting on a few records from Riverside Dialysis and will keep you posted.",
         hoursAgo: 4 * 24,
         readByPatient: true,
+      }),
+      buildMessage({
+        patientId: id,
+        slug: 'clinic-records-request',
+        threadKey: 'clinic-staff',
+        fromRole: 'staff',
+        fromName: STAFF_NAME,
+        body:
+          'Hi Sarah — Linda is in records and clinical review. Please upload any dialysis records you have ready when convenient.',
+        hoursAgo: 30,
+        readByStaff: true,
+        readByClinic: false,
       }),
     ],
     documents: [

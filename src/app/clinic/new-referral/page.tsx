@@ -18,7 +18,7 @@ import {
   UserRound,
   Users,
 } from 'lucide-react';
-import { ShellHeader } from '@/components/ui/ShellHeader';
+import { ClinicShell } from '@/components/ui/ClinicShell';
 import { useStore } from '@/lib/store';
 import type { ReferralSubmission } from '@/lib/types';
 
@@ -113,13 +113,7 @@ export default function ClinicNewReferralPage() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <ShellHeader
-          accent="navy"
-          eyebrow={`${clinicUser.clinicName} · Referral Submitted`}
-          title="Referral submitted"
-          subtitle={clinicUser.name}
-        />
+      <ClinicShell>
         <main className="mx-auto max-w-2xl px-6 py-16">
           <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
@@ -150,18 +144,12 @@ export default function ClinicNewReferralPage() {
             </div>
           </div>
         </main>
-      </div>
+      </ClinicShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <ShellHeader
-        accent="navy"
-        eyebrow={`${clinicUser.clinicName} · New Referral`}
-        title="Submit New Referral"
-        subtitle={`Referring clinician: ${clinicUser.name}`}
-      />
+    <ClinicShell>
       <main className="mx-auto max-w-3xl px-6 py-8">
         <Link
           href="/clinic"
@@ -170,6 +158,15 @@ export default function ClinicNewReferralPage() {
           <ChevronLeft className="h-3.5 w-3.5" />
           Back to clinic dashboard
         </Link>
+
+        <div className="mt-4">
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
+            Submit New Referral
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Send a dialysis patient referral from {clinicUser.clinicName} to ChristianaCare.
+          </p>
+        </div>
 
         <div className="mt-4 flex items-start gap-3 rounded-2xl border border-[#0f3e80]/15 bg-[#eef3fb] px-4 py-3 text-sm text-[#0f3e80]">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
@@ -372,6 +369,6 @@ export default function ClinicNewReferralPage() {
           </section>
         </form>
       </main>
-    </div>
+    </ClinicShell>
   );
 }
