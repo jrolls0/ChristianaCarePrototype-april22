@@ -1,4 +1,5 @@
 import type {
+  AmeliaConversation,
   ClinicUser,
   DocumentRecord,
   Message,
@@ -927,6 +928,7 @@ export interface InitialState {
   currentStaffName: string;
   currentClinicUser: ClinicUser;
   lastPatientTab: 'home' | 'amelia' | 'messages' | 'profile' | 'help';
+  ameliaConversations: Record<string, AmeliaConversation>;
 }
 
 export const createInitialState = (): InitialState => ({
@@ -944,6 +946,7 @@ export const createInitialState = (): InitialState => ({
   currentStaffName: STAFF_NAME,
   currentClinicUser: INITIAL_CLINIC_USER,
   lastPatientTab: 'home',
+  ameliaConversations: {},
 });
 
 export const STAFF_DISPLAY_TITLE = STAFF_TITLE;

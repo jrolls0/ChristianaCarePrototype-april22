@@ -209,6 +209,53 @@ export interface ClinicUser {
 
 export type PatientTab = 'home' | 'amelia' | 'messages' | 'profile' | 'help';
 
+export type AmeliaChatRole = 'assistant' | 'user';
+
+export type AmeliaActionTarget =
+  | 'tab:home'
+  | 'tab:messages'
+  | 'tab:profile'
+  | 'tab:help'
+  | 'todo:government-id'
+  | 'todo:insurance-card'
+  | 'todo:health-questionnaire'
+  | 'todo:emergency-contact'
+  | 'todo:education'
+  | 'todo:custom'
+  | 'message-thread:tc-frontdesk'
+  | 'message-thread:dusw';
+
+export interface AmeliaAction {
+  id: string;
+  kind: 'navigation' | 'message-draft';
+  label: string;
+  target: AmeliaActionTarget;
+  params?: {
+    todoId?: string;
+  };
+  draft?: {
+    threadKey: Extract<ThreadKey, 'tc-frontdesk' | 'dusw'>;
+    body: string;
+  };
+}
+
+export interface AmeliaChatMessage {
+  id: string;
+  role: AmeliaChatRole;
+  content: string;
+  createdAt: string;
+  actions?: AmeliaAction[];
+  source?: 'cloudflare' | 'local-fallback';
+}
+
+export interface AmeliaConversation {
+  patientId: string;
+  messages: AmeliaChatMessage[];
+  compactSummary?: string;
+  updatedAt: string;
+  archivedAt?: string;
+}
+
 export type PatientRegistrationResult =
   | { ok: true; patientId: string }
   | { ok: false; reason: 'account-exists'; patientId?: string };
@@ -223,6 +270,7 @@ export interface DemoState {
   currentStaffName: string;
   currentClinicUser: ClinicUser;
   lastPatientTab: PatientTab;
+  ameliaConversations: Record<string, AmeliaConversation>;
 
   submitReferral: (data: ReferralSubmission) => string;
   registerSelf: (data: SelfRegistration) => PatientRegistrationResult;
@@ -258,6 +306,8 @@ export interface DemoState {
   ) => void;
   markOnboardingComplete: (patientId: string) => void;
   setLastPatientTab: (tab: PatientTab) => void;
+  saveAmeliaConversation: (patientId: string, messages: AmeliaChatMessage[]) => void;
+  resetAmeliaConversation: (patientId: string) => void;
   completeTodo: (patientId: string, todoId: string) => void;
   addCustomTodo: (
     patientId: string,

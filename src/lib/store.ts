@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type {
+  AmeliaChatMessage,
   DemoState,
   DocumentRecord,
   Message,
@@ -142,6 +143,7 @@ const migratePersistedState = (persistedState: unknown): Partial<DemoState> => {
   return {
     ...state,
     patients: normalizePersistedPatients(state.patients),
+    ameliaConversations: state.ameliaConversations ?? {},
   };
 };
 
@@ -889,6 +891,27 @@ export const useStore = create<DemoState>()(
         set({ lastPatientTab: tab });
       },
 
+      saveAmeliaConversation: (patientId, messages: AmeliaChatMessage[]) => {
+        const now = new Date().toISOString();
+        const cappedMessages = messages.slice(-20);
+        set({
+          ameliaConversations: {
+            ...get().ameliaConversations,
+            [patientId]: {
+              patientId,
+              messages: cappedMessages,
+              updatedAt: now,
+            },
+          },
+        });
+      },
+
+      resetAmeliaConversation: (patientId) => {
+        const next = { ...get().ameliaConversations };
+        delete next[patientId];
+        set({ ameliaConversations: next });
+      },
+
       advancePatientStage: (patientId) => {
         const now = new Date().toISOString();
         set({
@@ -928,9 +951,11 @@ export const useStore = create<DemoState>()(
         currentStaffName: state.currentStaffName,
         currentClinicUser: state.currentClinicUser,
         lastPatientTab: state.lastPatientTab,
+        ameliaConversations: state.ameliaConversations,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
+        state.ameliaConversations = state.ameliaConversations ?? {};
         state.patients = state.patients.map((p) =>
           withDerivedPatientFields(
             p.referralSource

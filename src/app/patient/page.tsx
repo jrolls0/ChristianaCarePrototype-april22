@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type ComponentType,
   type FormEvent,
   type ReactNode,
@@ -26,7 +25,6 @@ import {
   ChevronRight,
   Circle,
   CircleHelp,
-  Clock3,
   Cross,
   Eye,
   EyeOff,
@@ -37,11 +35,10 @@ import {
   ListChecks,
   Lock,
   Mail,
-  MapPin,
-  Paperclip,
   PenSquare,
   Phone,
   PlayCircle,
+  RefreshCw,
   Search,
   SendHorizontal,
   UserRound,
@@ -49,7 +46,12 @@ import {
 } from 'lucide-react';
 import { useStore } from '../../lib/store';
 import { CLINIC_NAMES, findClinic } from '../../lib/clinicDirectory';
+import { buildAmeliaPatientContext } from '../../lib/amelia/context';
 import type {
+  AmeliaAction,
+  AmeliaActionTarget,
+  AmeliaChatMessage,
+  AmeliaConversation,
   DocumentRequest as StoreDocumentRequest,
   EmergencyContact as StoreEmergencyContact,
   Patient as StorePatient,
@@ -57,6 +59,7 @@ import type {
   ScreeningResponses,
   Todo as StoreTodo,
 } from '../../lib/types';
+import type { AmeliaRouteResponse } from '../../lib/amelia/response';
 import {
   type Attachment,
   appendAttachmentSummary,
@@ -72,7 +75,33 @@ type OnboardingStep =
   | 'app';
 type EntryAuthTab = 'register' | 'login';
 type AppTab = 'home' | 'amelia' | 'messages' | 'profile' | 'help';
-type MessagesIntent = 'openFirstUnread' | null;
+type MessagesIntent =
+  | { kind: 'openFirstUnread'; id: string }
+  | {
+      kind: 'openThread';
+      id: string;
+      threadKey: 'tc-frontdesk' | 'dusw';
+    }
+  | {
+      kind: 'draftReply';
+      id: string;
+      threadKey: 'tc-frontdesk' | 'dusw';
+      body: string;
+    }
+  | null;
+type TodoIntent = {
+  id: string;
+  target: Extract<
+    AmeliaActionTarget,
+    | 'todo:government-id'
+    | 'todo:insurance-card'
+    | 'todo:health-questionnaire'
+    | 'todo:emergency-contact'
+    | 'todo:education'
+    | 'todo:custom'
+  >;
+  todoId?: string;
+} | null;
 type TodoStatus = 'pending' | 'completed';
 
 type MockTodo = {
@@ -97,16 +126,9 @@ type BinaryChoice = '' | 'yes' | 'no';
 type TernaryChoice = '' | 'yes' | 'no' | 'notSure';
 type SubstanceChoice = '' | 'yes' | 'no' | 'preferNotToAnswer';
 
-type AssistantRole = 'assistant' | 'user' | 'system';
 type StaffRole = 'patient' | 'dusw' | 'tc_employee';
 
-type AssistantMessage = {
-  id: string;
-  role: AssistantRole;
-  content: string;
-  timestampLabel: string;
-  navigationLabel?: string;
-};
+type AssistantMessage = AmeliaChatMessage;
 
 type CareThreadMessage = {
   id: string;
@@ -128,8 +150,6 @@ type CareThread = {
   unreadCount: number;
   messages: CareThreadMessage[];
 };
-
-type ComposeAttachment = Attachment;
 
 type QuickHelpChipData = {
   id: string;
@@ -298,75 +318,10 @@ const QUESTIONNAIRE_HEIGHT_FEET_OPTIONS = ['3', '4', '5', '6', '7'];
 const QUESTIONNAIRE_HEIGHT_INCH_OPTIONS = Array.from({ length: 12 }, (_, index) => `${index}`);
 
 const QUICK_HELP_CHIPS: QuickHelpChipData[] = [
-  { id: 'parking', title: 'Parking', icon: MapPin },
-  { id: 'insurance', title: 'Insurance', icon: FileText },
-  { id: 'wait-times', title: 'Wait times', icon: Clock3 },
-  { id: 'evaluation-steps', title: 'Evaluation steps', icon: ListChecks },
-];
-
-type AmeliaAnswer = {
-  id: string;
-  keywords: string[];
-  answer: string;
-};
-
-const AMELIA_ANSWERS: AmeliaAnswer[] = [
-  {
-    id: 'parking',
-    keywords: ['parking', 'park', 'drive', 'directions', 'address', 'where'],
-    answer:
-      "The Transplant Center is at 4755 Ogletown-Stanton Rd, Newark, DE 19718. Free patient parking is in the Garage B deck just south of the main entrance — it's about a 3-minute walk to our office on the 2nd floor. Bring your appointment letter to show the attendant on your first visit.",
-  },
-  {
-    id: 'insurance',
-    keywords: ['insurance', 'accept', 'coverage', 'plan', 'payer', 'medicare', 'medicaid'],
-    answer:
-      "We accept most major plans including Medicare, Medicaid, Blue Cross Blue Shield, Aetna, UnitedHealthcare, and Highmark. Your coordinator will verify your specific plan before scheduling your first evaluation visit, so there are no billing surprises.",
-  },
-  {
-    id: 'wait-times',
-    keywords: ['how long', 'wait', 'time', 'listing', 'referral', 'listed'],
-    answer:
-      "On average, it takes 3–6 months from referral to being listed, assuming labs and records arrive promptly. Every case is different — some move faster, others take longer depending on specialist findings and donor matching.",
-  },
-  {
-    id: 'self-referral',
-    keywords: ['self', 'refer myself', 'self-referral', 'refer me', 'refer my'],
-    answer:
-      "Yes — ChristianaCare accepts self-referrals. You can call our Transplant Referral line at (302) 733-1240 and our team will walk you through next steps. You don't need a dialysis clinic to start the process for you.",
-  },
-  {
-    id: 'recovery',
-    keywords: ['recovery', 'post-transplant', 'after surgery', 'recover', 'hospital stay'],
-    answer:
-      "Typical hospital stay after transplant is 4–6 days. Most patients take it easy for 4–6 weeks before resuming normal activity, and return to work within 8–12 weeks. You'll be on immunosuppressive medications for life, with regular follow-up labs and clinic visits.",
-  },
-  {
-    id: 'care-team',
-    keywords: ['who is', 'contact', 'coordinator', 'transplant team', 'care team', 'reach'],
-    answer:
-      "Your senior transplant coordinator is Dr. Patricia Reeves, and your Front Desk contact is Sarah Martinez. You can message either of them directly from this app's Message Center, or call the front desk at (302) 733-1240 during business hours.",
-  },
-  {
-    id: 'evaluation-steps',
-    keywords: ['steps', 'evaluation', 'process', 'what happens', 'stages', 'workflow'],
-    answer:
-      "Your referral moves through onboarding, initial to-dos, initial screening, financial screening, records and clinical review, final decision, education, and scheduling. Your portal will show what you need to do next, and your care team will message you when a staff-owned step is moving forward.",
-  },
-];
-
-const AMELIA_FALLBACK =
-  "I can help with questions about parking, insurance, wait times, the evaluation process, recovery, and more. For anything specific to your case, please message your care team.";
-
-const INITIAL_ASSISTANT_MESSAGES: AssistantMessage[] = [
-  {
-    id: 'assistant-1',
-    role: 'assistant',
-    content:
-      "Hi, I'm **Amelia**, your ChristianaCare transplant guide! I'm here to answer your questions and walk you through every step of the kidney transplant process.\n\n**Your first step:** tap **Go to To-Do List** below. You have 4 tasks to complete before your evaluation — things like uploading your insurance card and completing a short health questionnaire. You can do them in any order, at your own pace.",
-    timestampLabel: '9:14 AM',
-    navigationLabel: 'Go to To-Do List',
-  },
+  { id: 'next', title: 'What should I do next?', icon: ListChecks },
+  { id: 'documents', title: 'What documents are uploaded?', icon: FileText },
+  { id: 'messages', title: 'Summarize my messages', icon: Mail },
+  { id: 'draft', title: 'Draft a message to Sarah', icon: PenSquare },
 ];
 
 const INITIAL_CARE_THREADS: CareThread[] = [
@@ -676,7 +631,12 @@ export default function MobilePrototypePage() {
   const updatePatientProfileAction = useStore((s) => s.updatePatientProfile);
   const markOnboardingCompleteAction = useStore((s) => s.markOnboardingComplete);
   const setLastPatientTabAction = useStore((s) => s.setLastPatientTab);
+  const saveAmeliaConversationAction = useStore((s) => s.saveAmeliaConversation);
+  const resetAmeliaConversationAction = useStore((s) => s.resetAmeliaConversation);
   const saveScreeningResponsesAction = useStore((s) => s.saveScreeningResponses);
+  const ameliaConversation = useStore((s) =>
+    currentPatientId ? s.ameliaConversations[currentPatientId] : undefined
+  );
 
   const currentPatient: StorePatient | null =
     currentPatientId ? patients.find((p) => p.id === currentPatientId) ?? null : null;
@@ -706,6 +666,7 @@ export default function MobilePrototypePage() {
     () => useStore.getState().lastPatientTab ?? 'home'
   );
   const [messagesIntent, setMessagesIntent] = useState<MessagesIntent>(null);
+  const [todoIntent, setTodoIntent] = useState<TodoIntent>(null);
   const [displayName, setDisplayName] = useState(seededDisplayName);
   const [showCoordinatorIntro, setShowCoordinatorIntro] = useState(false);
 
@@ -896,6 +857,7 @@ export default function MobilePrototypePage() {
     setLoginError('');
     setActiveTab('home');
     setMessagesIntent(null);
+    setTodoIntent(null);
     setShowCoordinatorIntro(false);
   }
 
@@ -933,7 +895,62 @@ export default function MobilePrototypePage() {
 
   function handleOpenUnreadMessage() {
     setActiveTab('messages');
-    setMessagesIntent('openFirstUnread');
+    setMessagesIntent({ kind: 'openFirstUnread', id: `unread-${Date.now()}` });
+  }
+
+  function handleAmeliaAction(action: AmeliaAction) {
+    if (action.kind === 'message-draft') {
+      if (action.draft) {
+        setTodoIntent(null);
+        setMessagesIntent({
+          kind: 'draftReply',
+          id: action.id,
+          threadKey: action.draft.threadKey,
+          body: action.draft.body,
+        });
+        setActiveTab('messages');
+      }
+      return;
+    }
+
+    if (action.target.startsWith('message-thread:')) {
+      const threadKey = action.target.replace('message-thread:', '') as 'tc-frontdesk' | 'dusw';
+      setActiveTab('messages');
+      setTodoIntent(null);
+      setMessagesIntent({ kind: 'openThread', id: action.id, threadKey });
+      return;
+    }
+    if (action.target === 'tab:messages') {
+      setActiveTab('messages');
+      setTodoIntent(null);
+      setMessagesIntent(null);
+      return;
+    }
+    if (action.target === 'tab:profile') {
+      setActiveTab('profile');
+      setMessagesIntent(null);
+      setTodoIntent(null);
+      return;
+    }
+    if (action.target === 'tab:help') {
+      setActiveTab('help');
+      setMessagesIntent(null);
+      setTodoIntent(null);
+      return;
+    }
+    if (action.target.startsWith('todo:')) {
+      setActiveTab('home');
+      setMessagesIntent(null);
+      setTodoIntent({
+        id: action.id,
+        target: action.target as NonNullable<TodoIntent>['target'],
+        todoId: action.params?.todoId,
+      });
+      return;
+    }
+    setActiveTab('home');
+    setMessagesIntent(null);
+    setTodoIntent(null);
   }
 
   function handleEnterApp() {
@@ -1045,7 +1062,7 @@ export default function MobilePrototypePage() {
 
             <div
               className={
-                activeTab === 'amelia'
+                activeTab === 'amelia' || activeTab === 'messages'
                   ? 'flex min-h-0 flex-1 flex-col'
                   : 'min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5'
               }
@@ -1059,13 +1076,16 @@ export default function MobilePrototypePage() {
                   onOpenUnreadMessage={handleOpenUnreadMessage}
                   pendingTodos={pendingTodos}
                   patient={currentPatient}
+                  todoIntent={todoIntent}
                 />
               )}
               {activeTab === 'amelia' && (
                 <VirtualAssistantTab
-                  onGoToTodoList={() => {
-                    setActiveTab('home');
-                  }}
+                  conversation={ameliaConversation}
+                  onAction={handleAmeliaAction}
+                  onConversationChange={saveAmeliaConversationAction}
+                  onResetConversation={resetAmeliaConversationAction}
+                  patient={currentPatient}
                 />
               )}
               {activeTab === 'messages' && (
@@ -1107,6 +1127,7 @@ export default function MobilePrototypePage() {
                         onClick={() => {
                           setActiveTab(tab.id);
                           if (tab.id !== 'messages') setMessagesIntent(null);
+                          if (tab.id !== 'home') setTodoIntent(null);
                         }}
                         className={`flex w-full flex-col items-center gap-1 rounded-xl px-1 py-2 ${
                           isActive ? 'bg-[#eaf4fc] text-[#1a66cc]' : 'text-slate-500'
@@ -2390,6 +2411,27 @@ function ConsentSection({ section }: { section: ConsentSectionData }) {
   );
 }
 
+function findTodoForAmeliaTarget(
+  pendingTodos: MockTodo[],
+  todoIntent: NonNullable<TodoIntent>
+): MockTodo | undefined {
+  if (todoIntent.target === 'todo:custom') {
+    return todoIntent.todoId
+      ? pendingTodos.find((todo) => todo.id === todoIntent.todoId)
+      : undefined;
+  }
+
+  const targetToType: Partial<Record<NonNullable<TodoIntent>['target'], MockTodo['type']>> = {
+    'todo:government-id': 'governmentIdUpload',
+    'todo:insurance-card': 'insuranceCardUpload',
+    'todo:health-questionnaire': 'healthQuestionnaire',
+    'todo:emergency-contact': 'carePartnerInvite',
+    'todo:education': 'educationVideo',
+  };
+  const todoType = targetToType[todoIntent.target];
+  return todoType ? pendingTodos.find((todo) => todo.type === todoType) : undefined;
+}
+
 type HomeTabProps = {
   completedTodos: MockTodo[];
   displayName: string;
@@ -2402,6 +2444,7 @@ type HomeTabProps = {
   onOpenUnreadMessage: () => void;
   pendingTodos: MockTodo[];
   patient: StorePatient | null;
+  todoIntent?: TodoIntent;
 };
 
 function HomeTab({
@@ -2412,9 +2455,22 @@ function HomeTab({
   onOpenUnreadMessage,
   pendingTodos,
   patient,
+  todoIntent,
 }: HomeTabProps) {
+  const appliedTodoIntentId = useRef<string | null>(null);
   const [activeTodoId, setActiveTodoId] = useState<string | null>(null);
   const activeTodo = pendingTodos.find((todo) => todo.id === activeTodoId) ?? null;
+
+  useEffect(() => {
+    if (!todoIntent || appliedTodoIntentId.current === todoIntent.id) return;
+    const match = findTodoForAmeliaTarget(pendingTodos, todoIntent);
+    appliedTodoIntentId.current = todoIntent.id;
+    if (!match) return;
+    const timeoutId = window.setTimeout(() => {
+      setActiveTodoId(match.id);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [pendingTodos, todoIntent]);
 
   const unreadCareMessages = useMemo(
     () =>
@@ -3760,8 +3816,7 @@ function deriveThreadsFromPatient(patient: StorePatient | null): CareThread[] {
     const participantName =
       key === 'dusw'
         ? patient.duswName ?? 'Dialysis Social Worker'
-        : patient.messages.find((m) => m.threadKey === 'tc-frontdesk' && m.fromRole === 'staff')
-            ?.fromName ?? 'Sarah Martinez';
+        : 'Sarah Martinez';
     const participantOrganization =
       key === 'dusw'
         ? patient.referringClinic ?? 'Dialysis Clinic'
@@ -3800,26 +3855,155 @@ function threadIdToKey(threadId: string): 'dusw' | 'tc-frontdesk' | null {
   return null;
 }
 
-function ameliaReplyFor(input: string): string {
-  const normalized = input.toLowerCase();
-  for (const entry of AMELIA_ANSWERS) {
-    if (entry.keywords.some((k) => normalized.includes(k))) {
-      return entry.answer;
-    }
+function formatAssistantTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  } catch {
+    return 'Now';
   }
-  return AMELIA_FALLBACK;
+}
+
+function renderAssistantInline(text: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/).map((chunk, index) =>
+    chunk.startsWith('**') && chunk.endsWith('**') ? (
+      <strong key={index} className="font-semibold text-slate-900">
+        {chunk.slice(2, -2)}
+      </strong>
+    ) : (
+      chunk
+    )
+  );
+}
+
+function normalizeAssistantMarkdown(content: string): string {
+  return content
+    .replace(/([:.])\s+\*\s+/g, '$1\n* ')
+    .replace(/\s+\*\s+(?=[A-Z0-9])/g, '\n* ');
+}
+
+function renderAssistantContent(content: string): ReactNode[] {
+  const blocks = normalizeAssistantMarkdown(content)
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  return blocks.flatMap((block, blockIndex) => {
+    const lines = block
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const nodes: ReactNode[] = [];
+    let paragraphLines: string[] = [];
+    let listItems: string[] = [];
+
+    function flushParagraph() {
+      if (paragraphLines.length === 0) return;
+      nodes.push(
+        <p key={`p-${blockIndex}-${nodes.length}`} className={nodes.length > 0 ? 'mt-2' : ''}>
+          {renderAssistantInline(paragraphLines.join(' '))}
+        </p>
+      );
+      paragraphLines = [];
+    }
+
+    function flushList() {
+      if (listItems.length === 0) return;
+      nodes.push(
+        <ul
+          key={`ul-${blockIndex}-${nodes.length}`}
+          className={`${nodes.length > 0 ? 'mt-2' : ''} list-disc space-y-1 pl-5`}
+        >
+          {listItems.map((item, itemIndex) => (
+            <li key={`li-${blockIndex}-${itemIndex}`} className="pl-0.5">
+              {renderAssistantInline(item)}
+            </li>
+          ))}
+        </ul>
+      );
+      listItems = [];
+    }
+
+    for (const line of lines) {
+      const bullet = line.match(/^[-*]\s+(.+)$/);
+      const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+      const listText = bullet?.[1] ?? numbered?.[1];
+      if (listText) {
+        flushParagraph();
+        listItems.push(listText);
+      } else {
+        flushList();
+        paragraphLines.push(line);
+      }
+    }
+
+    flushParagraph();
+    flushList();
+    return nodes;
+  });
+}
+
+function createInitialAmeliaMessage(patient: StorePatient | null): AssistantMessage {
+  const now = new Date().toISOString();
+  const firstName = patient?.firstName || 'there';
+  const pendingTodos = patient?.todos.filter((todo) => todo.status !== 'completed') ?? [];
+  const taskCopy =
+    pendingTodos.length > 0
+      ? `I can help you understand your next ${pendingTodos.length === 1 ? 'task' : 'tasks'}, summarize care-team messages, or draft a reply for you to review.`
+      : 'I can help you understand where your referral stands, summarize messages, or draft a note for your care team.';
+
+  return {
+    id: `assistant-welcome-${patient?.id ?? 'guest'}`,
+    role: 'assistant',
+    content: `Hi ${firstName}, I'm **Amelia**, your ChristianaCare transplant guide. ${taskCopy}\n\nI can guide you, but I will not complete tasks, upload documents, sign forms, or send messages for you.`,
+    createdAt: now,
+    actions:
+      pendingTodos.length > 0
+        ? [
+            {
+              id: `welcome-home-${patient?.id ?? 'guest'}`,
+              kind: 'navigation',
+              label: 'Open To-Do List',
+              target: 'tab:home',
+            },
+          ]
+        : [
+            {
+              id: `welcome-messages-${patient?.id ?? 'guest'}`,
+              kind: 'navigation',
+              label: 'Open Messages',
+              target: 'tab:messages',
+            },
+          ],
+  };
 }
 
 function VirtualAssistantTab({
-  onGoToTodoList,
+  conversation,
+  onAction,
+  onConversationChange,
+  onResetConversation,
+  patient,
 }: {
-  onGoToTodoList?: () => void;
+  conversation?: AmeliaConversation;
+  onAction: (action: AmeliaAction) => void;
+  onConversationChange: (patientId: string, messages: AmeliaChatMessage[]) => void;
+  onResetConversation: (patientId: string) => void;
+  patient: StorePatient | null;
 }) {
-  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>(INITIAL_ASSISTANT_MESSAGES);
+  const initialMessages = useMemo<AssistantMessage[]>(
+    () => (conversation?.messages.length ? conversation.messages : [createInitialAmeliaMessage(patient)]),
+    [conversation, patient]
+  );
+  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>(initialMessages);
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantTyping, setAssistantTyping] = useState(false);
+  const [assistantError, setAssistantError] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+
+  useEffect(() => {
+    setAssistantMessages(initialMessages);
+  }, [initialMessages]);
 
   // Track whether the user is currently pinned to the bottom of the scroll
   // area. If they've scrolled up to read older messages, we don't yank them
@@ -3840,41 +4024,107 @@ function VirtualAssistantTab({
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [assistantMessages.length, assistantTyping]);
 
-  function sendAssistantMessage(overrideInput?: string) {
+  async function sendAssistantMessage(overrideInput?: string) {
     const message = (overrideInput ?? assistantInput).trim();
-    if (!message || assistantTyping) return;
+    if (!message || assistantTyping || !patient) return;
 
     // Sending a new message always pulls the user back to the latest exchange.
     stickToBottomRef.current = true;
 
+    const userMessage: AssistantMessage = {
+      id: `assistant-user-${Date.now()}`,
+      role: 'user',
+      content: message,
+      createdAt: new Date().toISOString(),
+    };
+    const messagesWithUser = [...assistantMessages, userMessage];
     setAssistantInput('');
-    setAssistantMessages((previous) => [
-      ...previous,
-      {
-        id: `assistant-user-${Date.now()}`,
-        role: 'user',
-        content: message,
-        timestampLabel: 'Now',
-      },
-    ]);
+    setAssistantMessages(messagesWithUser);
+    onConversationChange(patient.id, messagesWithUser);
+    setAssistantError('');
     setAssistantTyping(true);
 
-    window.setTimeout(() => {
-      setAssistantMessages((previous) => [
-        ...previous,
-        {
-          id: `assistant-reply-${Date.now()}`,
-          role: 'assistant',
-          content: ameliaReplyFor(message),
-          timestampLabel: 'Now',
-        },
-      ]);
+    try {
+      const response = await fetch('/api/amelia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientId: patient.id,
+          message,
+          conversationMessages: assistantMessages.slice(-8).map((entry) => ({
+            role: entry.role,
+            content: entry.content,
+          })),
+          patientContext: buildAmeliaPatientContext(patient),
+        }),
+      });
+      const payload = (await response.json()) as AmeliaRouteResponse | { error?: string };
+      if (!response.ok || !('content' in payload)) {
+        throw new Error('Amelia request failed');
+      }
+      const assistantMessage: AssistantMessage = {
+        id: payload.id,
+        role: 'assistant',
+        content: payload.content,
+        actions: payload.actions,
+        source: payload.source,
+        createdAt: new Date().toISOString(),
+      };
+      const nextMessages = [...messagesWithUser, assistantMessage];
+      setAssistantMessages(nextMessages);
+      onConversationChange(patient.id, nextMessages);
+    } catch {
+      const assistantMessage: AssistantMessage = {
+        id: `assistant-error-${Date.now()}`,
+        role: 'assistant',
+        content:
+          'I could not reach Amelia right now. You can still use Home for tasks or Messages to contact your care team.',
+        actions: [
+          {
+            id: `assistant-error-messages-${Date.now()}`,
+            kind: 'navigation',
+            label: 'Open Messages',
+            target: 'tab:messages',
+          },
+        ],
+        createdAt: new Date().toISOString(),
+        source: 'local-fallback',
+      };
+      const nextMessages = [...messagesWithUser, assistantMessage];
+      setAssistantMessages(nextMessages);
+      onConversationChange(patient.id, nextMessages);
+      setAssistantError('Amelia used a local fallback because the AI service was unavailable.');
+    } finally {
       setAssistantTyping(false);
-    }, 800);
+    }
+  }
+
+  function resetConversation() {
+    if (!patient) return;
+    onResetConversation(patient.id);
+    setAssistantInput('');
+    setAssistantError('');
+    setAssistantMessages([createInitialAmeliaMessage(patient)]);
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#f2f2f7]">
+      <div className="border-b border-[#d9e1ec] bg-white px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-lg font-semibold text-slate-900">Amelia</p>
+          </div>
+          <button
+            type="button"
+            onClick={resetConversation}
+            disabled={!patient || assistantTyping}
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#dce4f0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 disabled:opacity-50"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            New
+          </button>
+        </div>
+      </div>
       <div
         ref={scrollRef}
         onScroll={handleScroll}
@@ -3884,11 +4134,16 @@ function VirtualAssistantTab({
           message.role === 'user' ? (
             <VirtualAssistantUserBubble key={message.id} message={message} />
           ) : (
-            <VirtualAssistantAmeliaBubble key={message.id} message={message} onGoToTodoList={onGoToTodoList} />
+            <VirtualAssistantAmeliaBubble key={message.id} message={message} onAction={onAction} />
           )
         )}
 
         {assistantTyping && <VirtualAssistantTypingBubble />}
+        {assistantError && (
+          <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+            {assistantError}
+          </p>
+        )}
       </div>
 
       {/* mb-[68px] keeps the bottom dock above the absolutely-positioned nav */}
@@ -3901,7 +4156,7 @@ function VirtualAssistantTab({
                 key={chip.id}
                 type="button"
                 onClick={() => sendAssistantMessage(chip.title)}
-                disabled={assistantTyping}
+                disabled={assistantTyping || !patient}
                 className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.08)] disabled:opacity-60"
               >
                 <Icon className="h-3.5 w-3.5 text-[#3399e6]" />
@@ -3926,16 +4181,20 @@ function VirtualAssistantTab({
           <button
             type="button"
             onClick={() => sendAssistantMessage()}
-            disabled={assistantInput.trim().length === 0 || assistantTyping}
+            disabled={assistantInput.trim().length === 0 || assistantTyping || !patient}
             className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${
-              assistantInput.trim().length > 0 && !assistantTyping
+              assistantInput.trim().length > 0 && !assistantTyping && patient
                 ? 'bg-gradient-to-br from-[#3399e6] to-[#5469e8]'
                 : 'bg-slate-300'
             }`}
+            aria-label="Send message to Amelia"
           >
             <ArrowUp className="h-4 w-4" />
           </button>
         </div>
+        <p className="mt-2 text-center text-[10px] leading-relaxed text-slate-400">
+          Amelia can guide and draft, but you stay in control of every action.
+        </p>
       </div>
     </div>
   );
@@ -3955,39 +4214,69 @@ function MessagesTab({
   const threads = useMemo(() => deriveThreadsFromPatient(patient), [patient]);
 
   const initialUnreadThreadId = useMemo(() => {
-    if (intent !== 'openFirstUnread') return null;
+    if (intent?.kind !== 'openFirstUnread') return null;
     return threads.find((t) => t.unreadCount > 0)?.id ?? null;
   }, [intent, threads]);
 
-  const didApplyIntent = useRef(false);
-  useEffect(() => {
-    if (intent !== 'openFirstUnread' || didApplyIntent.current) return;
-    if (!patient) return;
-    const firstUnread = threads.find((t) => t.unreadCount > 0);
-    if (firstUnread) {
-      const key = threadIdToKey(firstUnread.id);
-      if (key) markThreadReadAction(patient.id, key, 'patient');
-    }
-    didApplyIntent.current = true;
-  }, [intent, threads, patient, markThreadReadAction]);
-
+  const appliedIntentId = useRef<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(initialUnreadThreadId);
   const [threadReply, setThreadReply] = useState('');
   const [threadReplyAttachments, setThreadReplyAttachments] = useState<Attachment[]>([]);
+  const threadReplyRef = useRef<HTMLTextAreaElement | null>(null);
   const [threadSearch, setThreadSearch] = useState('');
   const [threadFilter, setThreadFilter] = useState<'all' | 'unread'>('all');
 
-  const [showComposer, setShowComposer] = useState(false);
-  const [composeRecipientIdState, setComposeRecipientId] = useState(
-    () => threads[0]?.id ?? ''
-  );
-  const composeRecipientId =
-    composeRecipientIdState && threads.some((t) => t.id === composeRecipientIdState)
-      ? composeRecipientIdState
-      : (threads[0]?.id ?? '');
-  const [composeSubject, setComposeSubject] = useState('');
-  const [composeBody, setComposeBody] = useState('');
-  const [composeAttachments, setComposeAttachments] = useState<ComposeAttachment[]>([]);
+  useEffect(() => {
+    if (intent?.kind !== 'openFirstUnread' || appliedIntentId.current === intent.id) return;
+    if (!patient) return;
+    const firstUnread = threads.find((t) => t.unreadCount > 0);
+    appliedIntentId.current = intent.id;
+    if (firstUnread) {
+      const key = threadIdToKey(firstUnread.id);
+      setSelectedThreadId(firstUnread.id);
+      const timeoutId = window.setTimeout(() => {
+        if (key) markThreadReadAction(patient.id, key, 'patient');
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [intent, threads, patient, markThreadReadAction]);
+
+  useEffect(() => {
+    if (intent?.kind !== 'openThread' || appliedIntentId.current === intent.id) return;
+    if (!patient) return;
+    const threadId = `thread-${patient.id}-${intent.threadKey}`;
+    if (!threads.some((thread) => thread.id === threadId)) return;
+    appliedIntentId.current = intent.id;
+    setSelectedThreadId(threadId);
+    setThreadReply('');
+    setThreadReplyAttachments([]);
+    const timeoutId = window.setTimeout(() => {
+      markThreadReadAction(patient.id, intent.threadKey, 'patient');
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [intent, patient, threads, markThreadReadAction]);
+
+  useEffect(() => {
+    const textarea = threadReplyRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`;
+  }, [threadReply, selectedThreadId]);
+
+  useEffect(() => {
+    if (intent?.kind !== 'draftReply' || appliedIntentId.current === intent.id) return;
+    if (!patient) return;
+    const threadId = `thread-${patient.id}-${intent.threadKey}`;
+    if (!threads.some((thread) => thread.id === threadId)) return;
+    appliedIntentId.current = intent.id;
+    setSelectedThreadId(threadId);
+    setThreadReply(intent.body);
+    setThreadReplyAttachments([]);
+    const timeoutId = window.setTimeout(() => {
+      markThreadReadAction(patient.id, intent.threadKey, 'patient');
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [intent, patient, threads, markThreadReadAction]);
 
   const selectedThread = useMemo(
     () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
@@ -4033,64 +4322,20 @@ function MessagesTab({
     setThreadReplyAttachments([]);
   }
 
-  function sendComposedMessage() {
-    const message = composeBody.trim();
-    const subject = composeSubject.trim();
-    if (!composeRecipientId || !message || !subject || !patient) return;
-
-    const bodyWithSubject = `${subject}\n\n${message}`;
-    const messageWithAttachments = appendAttachmentSummary(bodyWithSubject, composeAttachments);
-
-    const key = threadIdToKey(composeRecipientId);
-    if (!key) return;
-    sendMessageAction(patient.id, 'patient', messageWithAttachments, key);
-    setComposeSubject('');
-    setComposeBody('');
-    setComposeAttachments([]);
-    setShowComposer(false);
-    setSelectedThreadId(composeRecipientId);
-  }
-
   function markAllThreadsReadLocal() {
     if (!patient) return;
     markMessagesReadAction(patient.id, 'patient');
-  }
-
-  function handleComposeAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-    setComposeAttachments((previous) => [
-      ...previous,
-      ...Array.from(files).map((file, index) => ({
-        id: `${file.name}-${file.size}-${Date.now()}-${index}`,
-        name: file.name,
-        sizeLabel:
-          file.size >= 1024 * 1024
-            ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-            : file.size >= 1024
-              ? `${Math.round(file.size / 1024)} KB`
-              : `${file.size} B`,
-      })),
-    ]);
-    event.target.value = '';
-  }
-
-  function removeComposeAttachment(attachmentId: string) {
-    setComposeAttachments((previous) => previous.filter((attachment) => attachment.id !== attachmentId));
   }
 
   function removeThreadReplyAttachment(attachmentId: string) {
     setThreadReplyAttachments((previous) => previous.filter((attachment) => attachment.id !== attachmentId));
   }
 
-  const canSendComposedMessage =
-    composeRecipientId.trim().length > 0 && composeSubject.trim().length > 0 && composeBody.trim().length > 0;
-
   return (
-    <div className="space-y-3">
-      <section className="relative overflow-hidden rounded-2xl border border-[#e0e7f2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+    <div className="flex min-h-0 flex-1 flex-col px-4 pb-24 pt-5">
+      <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e0e7f2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
           {selectedThread ? (
-            <div className="flex min-h-[560px] flex-col">
+            <div className="flex min-h-0 flex-1 flex-col">
               <div className="flex items-center gap-3 border-b border-[#e3eaf4] px-4 py-3">
                 <button
                   type="button"
@@ -4103,8 +4348,7 @@ function MessagesTab({
                 <div>
                   <p className="text-sm font-semibold text-slate-900">{selectedThread.subject}</p>
                   <p className="text-[11px] text-slate-500">
-                    {selectedThread.participantName} •{' '}
-                    {selectedThread.participantRole === 'dusw' ? 'Social Worker' : 'Transplant Center'}
+                    {selectedThread.participantName} • {selectedThread.participantOrganization}
                   </p>
                 </div>
               </div>
@@ -4122,11 +4366,12 @@ function MessagesTab({
                 />
                 <div className="flex items-end gap-2 p-3">
                   <textarea
+                    ref={threadReplyRef}
                     value={threadReply}
                     onChange={(event) => setThreadReply(event.target.value)}
                     placeholder="Write a reply..."
                     rows={1}
-                    className="max-h-28 min-h-10 flex-1 resize-none rounded-2xl border border-[#dce4f0] bg-[#f4f7fb] px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+                    className="max-h-36 min-h-10 flex-1 resize-none rounded-2xl border border-[#dce4f0] bg-[#f4f7fb] px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
                   />
                   <AttachButton
                     size="sm"
@@ -4150,7 +4395,7 @@ function MessagesTab({
               </div>
             </div>
           ) : (
-            <div className="relative min-h-[560px]">
+            <div className="relative flex min-h-0 flex-1 flex-col">
               <div className="space-y-3 border-b border-[#e3eaf4] px-4 py-3">
                 <p className="text-xs leading-relaxed text-slate-500">
                   Secure messages with your dialysis team and transplant center staff.
@@ -4206,7 +4451,7 @@ function MessagesTab({
                 </div>
               </div>
 
-              <div className="max-h-[510px] divide-y divide-[#eef2f7] overflow-y-auto">
+              <div className="min-h-0 flex-1 divide-y divide-[#eef2f7] overflow-y-auto">
                 {filteredThreads.length === 0 ? (
                   <div className="px-4 py-10 text-center">
                     <p className="text-sm font-medium text-slate-600">No threads match your search.</p>
@@ -4226,7 +4471,7 @@ function MessagesTab({
                         }`}
                       />
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#dcebfa] text-xs font-bold text-[#2d80c9]">
-                        {initialsFor(thread.participantName)}
+                        {initialsFor(thread.subject)}
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -4236,11 +4481,11 @@ function MessagesTab({
                               thread.unreadCount > 0 ? 'font-semibold text-slate-900' : 'font-medium text-slate-800'
                             }`}
                           >
-                            {thread.participantName}
+                            {thread.subject}
                           </p>
                           <p className="shrink-0 text-[11px] text-slate-400">{thread.relativeTimeLabel}</p>
                         </div>
-                        <p className="truncate text-xs font-medium text-slate-700">{thread.subject}</p>
+                        <p className="truncate text-xs font-medium text-slate-700">{thread.participantName}</p>
                         <p className="truncate text-xs text-slate-500">{thread.previewText}</p>
                         <p className="mt-1 text-[11px] text-slate-400">{thread.participantOrganization}</p>
                       </div>
@@ -4256,135 +4501,6 @@ function MessagesTab({
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowComposer(true)}
-                className="absolute bottom-4 right-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#3399e6] text-white shadow-[0_10px_22px_rgba(51,153,230,0.45)]"
-                aria-label="Compose a new message"
-              >
-                <PenSquare className="h-5 w-5" />
-              </button>
-            </div>
-          )}
-
-          {showComposer && (
-            <div className="absolute inset-0 z-20 flex items-end bg-black/35">
-              <div className="w-full rounded-t-[28px] bg-white p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-900">New Message</h3>
-                  <button
-                    type="button"
-                    onClick={() => setShowComposer(false)}
-                    className="text-xs font-semibold text-slate-500"
-                  >
-                    Cancel
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block">
-                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Recipient
-                    </span>
-                    <select
-                      value={composeRecipientId}
-                      onChange={(event) => setComposeRecipientId(event.target.value)}
-                      className="h-11 w-full rounded-xl border border-[#dce4f0] bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
-                    >
-                      {threads.map((thread) => (
-                        <option key={thread.id} value={thread.id}>
-                          {thread.participantName} ({thread.participantRole === 'dusw' ? 'Dialysis' : 'Transplant Center'})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Subject
-                    </span>
-                    <input
-                      value={composeSubject}
-                      onChange={(event) => setComposeSubject(event.target.value)}
-                      placeholder="Enter message subject"
-                      className="h-11 w-full rounded-xl border border-[#dce4f0] bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Message
-                    </span>
-                    <textarea
-                      value={composeBody}
-                      onChange={(event) => setComposeBody(event.target.value)}
-                      rows={4}
-                      placeholder="Type your secure message..."
-                      className="w-full rounded-xl border border-[#dce4f0] bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Attach Documents (Optional)
-                    </span>
-                    <div className="rounded-xl border border-dashed border-[#c9daee] bg-[#f7fbff] p-3">
-                      <label
-                        htmlFor="compose-attachments"
-                        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#dce4f0] bg-white px-3 py-2 text-xs font-semibold text-[#1a66cc]"
-                      >
-                        <Paperclip className="h-3.5 w-3.5" />
-                        Attach Document
-                      </label>
-                      <input
-                        id="compose-attachments"
-                        type="file"
-                        multiple
-                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                        onChange={handleComposeAttachmentChange}
-                        className="hidden"
-                      />
-                      <p className="mt-2 text-[11px] text-slate-500">
-                        Simulated upload for prototype messaging.
-                      </p>
-
-                      {composeAttachments.length > 0 && (
-                        <div className="mt-3 space-y-2">
-                          {composeAttachments.map((attachment) => (
-                            <div
-                              key={attachment.id}
-                              className="flex items-center justify-between rounded-lg border border-[#dce4f0] bg-white px-3 py-2"
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate text-xs font-medium text-slate-700">{attachment.name}</p>
-                                <p className="text-[11px] text-slate-500">{attachment.sizeLabel}</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => removeComposeAttachment(attachment.id)}
-                                className="ml-3 text-[11px] font-semibold text-slate-500"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={sendComposedMessage}
-                    disabled={!canSendComposedMessage}
-                    className={`inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white ${
-                      canSendComposedMessage ? 'bg-[#3399e6]' : 'bg-slate-300'
-                    }`}
-                  >
-                    Send Message
-                  </button>
-                </div>
-              </div>
             </div>
           )}
       </section>
@@ -4394,40 +4510,52 @@ function MessagesTab({
 
 function VirtualAssistantAmeliaBubble({
   message,
-  onGoToTodoList,
+  onAction,
 }: {
   message: AssistantMessage;
-  onGoToTodoList?: () => void;
+  onAction: (action: AmeliaAction) => void;
 }) {
   return (
     <div className="flex items-start gap-2">
       <div className="max-w-[85%]">
         <div className="rounded-[18px] rounded-bl-[6px] bg-white px-4 py-3 text-sm leading-relaxed text-slate-800 shadow-[0_2px_8px_rgba(15,23,42,0.08)]">
-          {message.content.split('\n\n').map((para, i) => (
-            <p key={i} className={i > 0 ? 'mt-2' : ''}>
-              {para.split(/(\*\*[^*]+\*\*)/).map((chunk, j) =>
-                chunk.startsWith('**') && chunk.endsWith('**')
-                  ? <strong key={j} className="font-semibold text-slate-900">{chunk.slice(2, -2)}</strong>
-                  : chunk
-              )}
-            </p>
-          ))}
+          {renderAssistantContent(message.content)}
         </div>
-        {message.navigationLabel && (
-          <button
-            type="button"
-            onClick={onGoToTodoList}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#3399e6] to-[#6b4be8] px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:opacity-90 active:scale-95"
-          >
-            <ListChecks className="h-3.5 w-3.5" />
-            {message.navigationLabel}
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
+        {message.actions && message.actions.some(shouldRenderAmeliaAction) && (
+          <div className="mt-2 flex flex-col gap-2">
+            {message.actions.filter(shouldRenderAmeliaAction).map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                onClick={() => onAction(action)}
+                className="inline-flex max-w-full items-center justify-between gap-2 rounded-2xl border border-[#cfe0f2] bg-white px-3 py-2 text-left text-xs font-semibold text-[#1a66cc] shadow-[0_2px_8px_rgba(15,23,42,0.06)]"
+              >
+                <span className="min-w-0 truncate">
+                  {action.label}
+                </span>
+                {action.kind === 'message-draft' ? (
+                  <PenSquare className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
         )}
-        <p className="mt-1 px-1 text-[10px] text-slate-400">{message.timestampLabel}</p>
+        <p className="mt-1 px-1 text-[10px] text-slate-400">
+          {formatAssistantTime(message.createdAt)}
+          {message.source === 'local-fallback' ? ' · fallback' : ''}
+        </p>
       </div>
     </div>
   );
+}
+
+function shouldRenderAmeliaAction(action: AmeliaAction): boolean {
+  if (action.kind === 'message-draft') {
+    return Boolean(action.draft) && action.label !== 'Draft a message';
+  }
+  return true;
 }
 
 function VirtualAssistantUserBubble({ message }: { message: AssistantMessage }) {
@@ -4438,7 +4566,9 @@ function VirtualAssistantUserBubble({ message }: { message: AssistantMessage }) 
         style={{ background: 'linear-gradient(135deg, #3399e6, #4c86e8)' }}
       >
         {message.content}
-        <p className="mt-1 text-right text-[10px] text-white/80">{message.timestampLabel}</p>
+        <p className="mt-1 text-right text-[10px] text-white/80">
+          {formatAssistantTime(message.createdAt)}
+        </p>
       </div>
     </div>
   );
@@ -4464,12 +4594,16 @@ function VirtualAssistantTypingBubble() {
 
 function CareThreadBubble({ message }: { message: CareThreadMessage }) {
   const isPatient = message.senderRole === 'patient';
+  const senderLabel =
+    message.senderRole === 'tc_employee'
+      ? 'Sarah Martinez • Front Desk'
+      : `${message.senderName} • Dialysis Team`;
   return (
     <div className={isPatient ? 'flex justify-end' : 'flex justify-start'}>
       <div className={isPatient ? 'max-w-[84%]' : 'max-w-[86%]'}>
         {!isPatient && (
           <p className="mb-1 px-1 text-[11px] font-medium text-slate-500">
-            {message.senderName} • {message.senderRole === 'dusw' ? 'Social Worker' : 'Transplant Center'}
+            {senderLabel}
           </p>
         )}
         <div
