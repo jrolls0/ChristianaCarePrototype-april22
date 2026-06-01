@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { clsx } from 'clsx';
 import {
   ArrowRight,
   CheckCircle2,
@@ -19,8 +20,17 @@ import {
   Users,
 } from 'lucide-react';
 import { ClinicShell } from '@/components/ui/ClinicShell';
+import {
+  REFERRAL_SNAPSHOT_GENERAL_FIELDS,
+  REFERRAL_SNAPSHOT_LAB_FIELDS,
+  hasReferralSnapshot,
+} from '@/lib/referralClinicalSnapshot';
 import { useStore } from '@/lib/store';
-import type { ReferralSubmission } from '@/lib/types';
+import type {
+  ReferralClinicalSnapshot,
+  ReferralConcernValue,
+  ReferralSubmission,
+} from '@/lib/types';
 
 const referralSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
@@ -76,6 +86,86 @@ function FieldLabel({
   );
 }
 
+function normalizeClinicalSnapshot(
+  snapshot: ReferralClinicalSnapshot
+): ReferralClinicalSnapshot | undefined {
+  const next: ReferralClinicalSnapshot = {};
+  const labs: NonNullable<ReferralClinicalSnapshot['labs']> = {};
+
+  for (const field of REFERRAL_SNAPSHOT_GENERAL_FIELDS) {
+    if (snapshot[field.key]) {
+      next[field.key] = snapshot[field.key];
+    }
+  }
+
+  for (const field of REFERRAL_SNAPSHOT_LAB_FIELDS) {
+    if (snapshot.labs?.[field.key]) {
+      labs[field.key] = snapshot.labs[field.key];
+    }
+  }
+
+  if (Object.keys(labs).length > 0) {
+    next.labs = labs;
+  }
+
+  const comments = snapshot.comments?.trim();
+  if (comments) {
+    next.comments = comments;
+  }
+
+  return hasReferralSnapshot(next) ? next : undefined;
+}
+
+function ConcernToggle({
+  value,
+  onChange,
+}: {
+  value?: ReferralConcernValue;
+  onChange: (value: ReferralConcernValue) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+      {[
+        { value: 'concern' as const, label: 'Concern' },
+        { value: 'no-concern' as const, label: 'No concern' },
+      ].map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={clsx(
+            'rounded-lg px-3 py-2 text-xs font-semibold transition',
+            value === option.value
+              ? option.value === 'concern'
+                ? 'bg-amber-50 text-amber-800 shadow-sm ring-1 ring-amber-200'
+                : 'bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200'
+              : 'text-slate-500 hover:bg-white hover:text-slate-700'
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SnapshotControl({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  value?: ReferralConcernValue;
+  onChange: (value: ReferralConcernValue) => void;
+}) {
+  return (
+    <div className="grid gap-2 rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:grid-cols-[minmax(0,1fr)_16rem] sm:items-center">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <ConcernToggle value={value} onChange={onChange} />
+    </div>
+  );
+}
+
 export default function ClinicNewReferralPage() {
   const router = useRouter();
   const clinicUser = useStore((s) => s.currentClinicUser);
@@ -85,6 +175,8 @@ export default function ClinicNewReferralPage() {
     firstName: string;
     lastName: string;
   } | null>(null);
+  const [clinicalSnapshot, setClinicalSnapshot] =
+    useState<ReferralClinicalSnapshot>({});
 
   const {
     register,
@@ -106,9 +198,33 @@ export default function ClinicNewReferralPage() {
     const payload: ReferralSubmission = {
       ...values,
       referringClinic: clinicUser.clinicName,
+      referralClinicalSnapshot: normalizeClinicalSnapshot(clinicalSnapshot),
     };
     submitReferral(payload);
     setSubmitted({ firstName: values.firstName, lastName: values.lastName });
+  };
+
+  const setGeneralSnapshotValue = (
+    key: Exclude<keyof ReferralClinicalSnapshot, 'labs' | 'comments'>,
+    nextValue: ReferralConcernValue
+  ) => {
+    setClinicalSnapshot((current) => ({
+      ...current,
+      [key]: current[key] === nextValue ? undefined : nextValue,
+    }));
+  };
+
+  const setLabSnapshotValue = (
+    key: keyof NonNullable<ReferralClinicalSnapshot['labs']>,
+    nextValue: ReferralConcernValue
+  ) => {
+    setClinicalSnapshot((current) => ({
+      ...current,
+      labs: {
+        ...current.labs,
+        [key]: current.labs?.[key] === nextValue ? undefined : nextValue,
+      },
+    }));
   };
 
   if (submitted) {
@@ -342,6 +458,80 @@ export default function ClinicNewReferralPage() {
                   </p>
                 )}
               </div>
+            </div>
+          </section>
+
+          {/* Section 3: Clinical Snapshot */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+                <Stethoscope className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">
+                  Clinical Snapshot <span className="font-normal text-slate-400">(optional)</span>
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Flag referral context for ChristianaCare. Leave any item blank if unknown.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-5">
+              <div className="grid gap-3">
+                <SnapshotControl
+                  label="Weight / BMI"
+                  value={clinicalSnapshot.weightBmi}
+                  onChange={(value) => setGeneralSnapshotValue('weightBmi', value)}
+                />
+              </div>
+
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Labs
+                </h3>
+                <div className="mt-2 grid gap-3">
+                  {REFERRAL_SNAPSHOT_LAB_FIELDS.map((field) => (
+                    <SnapshotControl
+                      key={field.key}
+                      label={field.label}
+                      value={clinicalSnapshot.labs?.[field.key]}
+                      onChange={(value) => setLabSnapshotValue(field.key, value)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                {REFERRAL_SNAPSHOT_GENERAL_FIELDS.filter(
+                  (field) => field.key !== 'weightBmi'
+                ).map((field) => (
+                  <SnapshotControl
+                    key={field.key}
+                    label={field.label}
+                    value={clinicalSnapshot[field.key]}
+                    onChange={(value) => setGeneralSnapshotValue(field.key, value)}
+                  />
+                ))}
+              </div>
+
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Comments
+                </span>
+                <textarea
+                  value={clinicalSnapshot.comments ?? ''}
+                  onChange={(event) =>
+                    setClinicalSnapshot((current) => ({
+                      ...current,
+                      comments: event.target.value,
+                    }))
+                  }
+                  rows={4}
+                  placeholder="Comments including co-morbidities..."
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#0f3e80] focus:ring-2 focus:ring-[#0f3e80]/15"
+                />
+              </label>
             </div>
           </section>
 

@@ -307,6 +307,7 @@ export const useStore = create<DemoState>()(
             daysInStage: 0,
             isStuck: false,
             lastActivityAt: now,
+            referralClinicalSnapshot: data.referralClinicalSnapshot,
             todos: seededInitialTodos,
             messages: duswWelcomeMsg
               ? [...match.messages, systemMsg, duswWelcomeMsg]
@@ -353,6 +354,7 @@ export const useStore = create<DemoState>()(
           ],
           documents: [],
           lastActivityAt: now,
+          referralClinicalSnapshot: data.referralClinicalSnapshot,
         };
         set({ patients: [...state.patients, newPatient] });
         return newId;

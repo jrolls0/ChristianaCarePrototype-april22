@@ -80,6 +80,25 @@ export interface PortalAccount {
   createdAt: string;
 }
 
+export type ReferralConcernValue = 'concern' | 'no-concern';
+
+export interface ReferralClinicalSnapshot {
+  weightBmi?: ReferralConcernValue;
+  labs?: {
+    potassium?: ReferralConcernValue;
+    phosphorus?: ReferralConcernValue;
+    hemoglobin?: ReferralConcernValue;
+    albumin?: ReferralConcernValue;
+    ipth?: ReferralConcernValue;
+  };
+  medicationCompliance?: ReferralConcernValue;
+  functionalStatusFrailty?: ReferralConcernValue;
+  socialSupport?: ReferralConcernValue;
+  htnControl?: ReferralConcernValue;
+  dmControl?: ReferralConcernValue;
+  comments?: string;
+}
+
 export interface ScreeningResponses {
   onDialysis: 'yes' | 'no' | 'notSure';
   dialysisStart?: string;
@@ -168,6 +187,7 @@ export interface Patient {
   screeningResponses?: ScreeningResponses;
   endReferral?: EndReferralRecord;
   profileOverrides?: PatientProfileOverrides;
+  referralClinicalSnapshot?: ReferralClinicalSnapshot;
 }
 
 export interface ReferralSubmission {
@@ -182,6 +202,7 @@ export interface ReferralSubmission {
   nephrologistName: string;
   nephrologistEmail: string;
   referringClinic: string;
+  referralClinicalSnapshot?: ReferralClinicalSnapshot;
 }
 
 export interface SelfRegistration {
