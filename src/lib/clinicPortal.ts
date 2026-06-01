@@ -1,6 +1,7 @@
 import { PATIENT_STAGE_LABEL } from '@/lib/stages';
 import type { DocumentRecord, Patient, PatientStage } from '@/lib/types';
 import { CLINIC_PATIENT_THREAD_KEY, CLINIC_THREAD_KEY } from '@/lib/clinicInbox';
+import { referralSnapshotSearchText } from '@/lib/referralClinicalSnapshot';
 
 export const AWAITING_PATIENT_STAGES: PatientStage[] = ['onboarding', 'initial-todos'];
 export const SERVICES_ROI_DOCUMENT = 'Services ROI';
@@ -88,6 +89,7 @@ export function clinicSearchText(patient: Patient): string {
     patient.nephrologistName,
     patient.preferredLanguage,
     PATIENT_STAGE_LABEL[patient.stage],
+    referralSnapshotSearchText(patient.referralClinicalSnapshot),
   ]
     .filter(Boolean)
     .join(' ')

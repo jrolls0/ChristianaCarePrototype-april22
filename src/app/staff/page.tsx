@@ -22,6 +22,7 @@ import { StuckBadge } from '@/components/ui/StuckBadge';
 import { ScreeningReviewBadge } from '@/components/ui/ScreeningReviewBadge';
 import { useStore } from '@/lib/store';
 import { PATIENT_STAGE_LABEL } from '@/lib/stages';
+import { referralSnapshotSearchText } from '@/lib/referralClinicalSnapshot';
 import type { Patient, PatientStage } from '@/lib/types';
 
 type PriorityFilter = 'all' | 'stuck' | 'new' | 'self-signups';
@@ -110,6 +111,7 @@ function searchText(patient: Patient): string {
     patient.referralSource,
     PATIENT_STAGE_LABEL[patient.stage],
     nextAction(patient),
+    referralSnapshotSearchText(patient.referralClinicalSnapshot),
   ]
     .filter(Boolean)
     .join(' ')

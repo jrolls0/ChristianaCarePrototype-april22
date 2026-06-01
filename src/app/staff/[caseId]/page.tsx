@@ -43,6 +43,13 @@ import { AttachButton, AttachmentChips } from '@/components/ui/AttachmentRow';
 import { appendAttachmentSummary, type Attachment } from '@/lib/attachments';
 import { END_REASON_OPTIONS, buildEndReferralLetter } from '@/lib/endReasons';
 import {
+  REFERRAL_SNAPSHOT_GENERAL_FIELDS,
+  REFERRAL_SNAPSHOT_LAB_FIELDS,
+  hasReferralSnapshot,
+  referralSnapshotConcernLabels,
+  referralSnapshotValueLabel,
+} from '@/lib/referralClinicalSnapshot';
+import {
   PATIENT_STAGE_LABEL,
   PATIENT_STAGE_SHORT_LABEL,
   VISIBLE_PATIENT_STAGES,
@@ -934,6 +941,8 @@ function SummaryTab({
               : 'Use the tabs below to review the current case work and move the referral forward.'}
         </p>
 
+        <ClinicReferralSnapshotSummary patient={patient} />
+
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <SummaryMetric label="Open to-dos" value={pendingTodos.length.toString()} />
           <SummaryMetric label="Documents" value={patient.documents.length.toString()} />
@@ -998,6 +1007,58 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
       <div className="text-2xl font-semibold text-slate-900">{value}</div>
       <div className="text-xs font-medium text-slate-500">{label}</div>
+    </div>
+  );
+}
+
+function ClinicReferralSnapshotSummary({ patient }: { patient: Patient }) {
+  const snapshot = patient.referralClinicalSnapshot;
+  if (!hasReferralSnapshot(snapshot)) return null;
+
+  const concerns = referralSnapshotConcernLabels(snapshot);
+  const comments = snapshot?.comments?.trim();
+
+  return (
+    <div className="mt-5 rounded-xl border border-amber-100 bg-amber-50/50 p-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-900">Clinic Referral Snapshot</h4>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {concerns.length} {concerns.length === 1 ? 'concern' : 'concerns'} flagged · submitted by{' '}
+            {patient.referringClinic ?? 'dialysis clinic'}
+          </p>
+        </div>
+        {concerns.length === 0 && (
+          <span className="inline-flex w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+            No concerns flagged
+          </span>
+        )}
+      </div>
+
+      {concerns.length > 0 && (
+        <ul className="mt-3 grid gap-2 md:grid-cols-2">
+          {concerns.map((concern) => (
+            <li
+              key={concern}
+              className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-amber-900 ring-1 ring-amber-100"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              Concern: {concern}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {comments && (
+        <div className="mt-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Comments
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+            {comments}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1179,15 +1240,18 @@ function ScreeningTab({ patient }: { patient: Patient }) {
   const responses = patient.screeningResponses;
   if (!responses) {
     return (
-      <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <ShieldCheck className="mx-auto h-10 w-10 text-slate-300" />
-        <h3 className="mt-3 text-base font-semibold text-slate-900">
-          Health questionnaire not submitted yet
-        </h3>
-        <p className="mt-1 text-sm text-slate-500">
-          Once the patient completes the health questionnaire, staff can review the responses here.
-        </p>
-      </section>
+      <div className="space-y-5">
+        <ClinicReferralSnapshotDetail patient={patient} />
+        <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <ShieldCheck className="mx-auto h-10 w-10 text-slate-300" />
+          <h3 className="mt-3 text-base font-semibold text-slate-900">
+            Health questionnaire not submitted yet
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Once the patient completes the health questionnaire, staff can review the responses here.
+          </p>
+        </section>
+      </div>
     );
   }
 
@@ -1213,6 +1277,7 @@ function ScreeningTab({ patient }: { patient: Patient }) {
           </div>
         </section>
       )}
+      <ClinicReferralSnapshotDetail patient={patient} />
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -1285,6 +1350,97 @@ function ScreeningTab({ patient }: { patient: Patient }) {
         </section>
       )}
     </div>
+  );
+}
+
+function ClinicReferralSnapshotDetail({ patient }: { patient: Patient }) {
+  const snapshot = patient.referralClinicalSnapshot;
+  if (!hasReferralSnapshot(snapshot)) return null;
+
+  const generalRows = REFERRAL_SNAPSHOT_GENERAL_FIELDS.map((field) => ({
+    label: field.label,
+    value: snapshot?.[field.key],
+  }));
+  const labRows = REFERRAL_SNAPSHOT_LAB_FIELDS.map((field) => ({
+    label: field.label,
+    value: snapshot?.labs?.[field.key],
+  }));
+  const comments = snapshot?.comments?.trim();
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">
+            Clinic-Provided Referral Snapshot
+          </h3>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Source: {patient.referringClinic ?? 'Dialysis clinic'}
+            {patient.duswName ? ` · ${patient.duswName}` : ''}
+          </p>
+        </div>
+        <span className="inline-flex w-fit rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-100">
+          Clinic-provided
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <ReferralSnapshotRows title="Referral Context" rows={generalRows} />
+        <ReferralSnapshotRows title="Labs" rows={labRows} />
+      </div>
+
+      {comments && (
+        <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Comments
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+            {comments}
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReferralSnapshotRows({
+  rows,
+  title,
+}: {
+  rows: Array<{ label: string; value?: 'concern' | 'no-concern' }>;
+  title: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        {title}
+      </h4>
+      <dl className="mt-3 space-y-2.5">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between gap-3 text-sm">
+            <dt className="text-slate-600">{row.label}</dt>
+            <dd>
+              <ReferralSnapshotValue value={row.value} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function ReferralSnapshotValue({ value }: { value?: 'concern' | 'no-concern' }) {
+  return (
+    <span
+      className={clsx(
+        'inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset',
+        value === 'concern' && 'bg-amber-50 text-amber-800 ring-amber-200',
+        value === 'no-concern' && 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+        !value && 'bg-slate-100 text-slate-500 ring-slate-200'
+      )}
+    >
+      {referralSnapshotValueLabel(value)}
+    </span>
   );
 }
 

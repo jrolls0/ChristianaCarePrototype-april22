@@ -9,7 +9,6 @@ import {
   Building2,
   CheckCircle2,
   Circle,
-  Clock,
   Eye,
   FileText,
   MessageSquare,
@@ -36,6 +35,11 @@ import {
   todoCompletedAt,
   waitingOnLabel,
 } from '@/lib/clinicPortal';
+import {
+  hasReferralSnapshot,
+  referralSnapshotLabConcernCount,
+  referralSnapshotValueLabel,
+} from '@/lib/referralClinicalSnapshot';
 import { PATIENT_STAGE_LABEL, PATIENT_STAGE_SHORT_LABEL, VISIBLE_PATIENT_STAGES } from '@/lib/stages';
 import { useStore } from '@/lib/store';
 import type { DocumentRecord, Patient, Todo } from '@/lib/types';
@@ -372,27 +376,31 @@ function SummaryTab({ patient }: { patient: Patient }) {
   const roiCount = clinicRoiDocuments(patient).length;
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="text-base font-semibold text-slate-900">Referral summary</h3>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <SummaryMetric label="Waiting on" value={waiting.label} />
-          <SummaryMetric label="Last update" value={relativeTime(patient.lastActivityAt)} />
-        </div>
-        <p className="mt-4 text-sm leading-6 text-slate-500">
-          The clinic can track ChristianaCare-side progress, view completed ROI forms,
-          upload clinic documents, and message the Front Desk team.
-        </p>
-      </section>
+    <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-900">Referral summary</h3>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <SummaryMetric label="Waiting on" value={waiting.label} />
+            <SummaryMetric label="Last update" value={relativeTime(patient.lastActivityAt)} />
+          </div>
+          <p className="mt-4 text-sm leading-6 text-slate-500">
+            The clinic can track ChristianaCare-side progress, view completed ROI forms,
+            upload clinic documents, and message the Front Desk team.
+          </p>
+        </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="text-base font-semibold text-slate-900">Clinic snapshot</h3>
-        <div className="mt-4 space-y-3">
-          <SummaryMetric label="Patient to-dos" value={`${completedTodos}/${patient.todos.length}`} />
-          <SummaryMetric label="ROI documents" value={`${roiCount}/2`} />
-          <SummaryMetric label="Clinic uploads" value={clinicDocuments(patient).length.toString()} />
-        </div>
-      </section>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-900">Clinic snapshot</h3>
+          <div className="mt-4 space-y-3">
+            <SummaryMetric label="Patient to-dos" value={`${completedTodos}/${patient.todos.length}`} />
+            <SummaryMetric label="ROI documents" value={`${roiCount}/2`} />
+            <SummaryMetric label="Clinic uploads" value={clinicDocuments(patient).length.toString()} />
+          </div>
+        </section>
+      </div>
+
+      <ReferralSnapshotPanel patient={patient} />
     </div>
   );
 }
@@ -405,6 +413,96 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
       </div>
       <div className="mt-1 text-sm font-semibold text-slate-900">{value}</div>
     </div>
+  );
+}
+
+function ReferralSnapshotPanel({ patient }: { patient: Patient }) {
+  const snapshot = patient.referralClinicalSnapshot;
+  const hasSnapshot = hasReferralSnapshot(snapshot);
+  const labConcernCount = referralSnapshotLabConcernCount(snapshot);
+  const comments = snapshot?.comments?.trim();
+  const summaryRows = [
+    {
+      label: 'Weight / BMI',
+      value: snapshot?.weightBmi,
+    },
+    {
+      label: 'Labs',
+      value: hasSnapshot
+        ? (`${labConcernCount} ${labConcernCount === 1 ? 'concern' : 'concerns'} flagged` as const)
+        : undefined,
+      custom: true,
+    },
+    {
+      label: 'Medication compliance',
+      value: snapshot?.medicationCompliance,
+    },
+    {
+      label: 'Functional status / frailty',
+      value: snapshot?.functionalStatusFrailty,
+    },
+    {
+      label: 'Social support',
+      value: snapshot?.socialSupport,
+    },
+    {
+      label: 'Comments',
+      value: comments ? 'View note' : undefined,
+      custom: true,
+    },
+  ];
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">Referral Snapshot</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Shared with ChristianaCare at referral submission.
+          </p>
+        </div>
+        {!hasSnapshot && (
+          <span className="text-xs font-medium text-slate-400">No snapshot submitted</span>
+        )}
+      </div>
+
+      {hasSnapshot ? (
+        <>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {summaryRows.map((row) => (
+              <div key={row.label} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  {row.label}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {row.custom
+                    ? row.value ?? 'Not answered'
+                    : referralSnapshotValueLabel(
+                        row.value === 'concern' || row.value === 'no-concern'
+                          ? row.value
+                          : undefined
+                      )}
+                </p>
+              </div>
+            ))}
+          </div>
+          {comments && (
+            <div className="mt-4 rounded-xl border border-slate-100 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Comments
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                {comments}
+              </p>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+          No clinical snapshot items were submitted with this referral.
+        </div>
+      )}
+    </section>
   );
 }
 

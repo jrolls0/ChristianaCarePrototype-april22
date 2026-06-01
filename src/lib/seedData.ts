@@ -4,6 +4,7 @@ import type {
   DocumentRecord,
   Message,
   Patient,
+  ReferralClinicalSnapshot,
   ScreeningResponses,
   ThreadKey,
   Todo,
@@ -323,6 +324,10 @@ const buildDoc = (
   uploadedBy,
 });
 
+const referralSnapshot = (
+  snapshot: ReferralClinicalSnapshot
+): ReferralClinicalSnapshot => snapshot;
+
 // ---------- Patients ----------
 
 const buildMaria = (): Patient => {
@@ -417,6 +422,19 @@ const buildMaria = (): Patient => {
       buildDoc(id, 'gov-id', 'Government ID — front', 11 * 24),
     ],
     lastActivityAt: daysAgoIso(2),
+    referralClinicalSnapshot: referralSnapshot({
+      weightBmi: 'no-concern',
+      labs: {
+        potassium: 'no-concern',
+        phosphorus: 'concern',
+        hemoglobin: 'no-concern',
+      },
+      medicationCompliance: 'concern',
+      socialSupport: 'concern',
+      htnControl: 'no-concern',
+      comments:
+        'Patient has missed several dietitian visits and may need extra support completing portal tasks.',
+    }),
     emergencyContact: {
       name: 'David Chen',
       relationship: 'Spouse',
@@ -509,6 +527,18 @@ const buildRobert = (): Patient => {
       buildDoc(id, 'insurance-back', 'Insurance Card — back', 9 * 24),
     ],
     lastActivityAt: daysAgoIso(1),
+    referralClinicalSnapshot: referralSnapshot({
+      weightBmi: 'no-concern',
+      labs: {
+        albumin: 'no-concern',
+        hemoglobin: 'no-concern',
+      },
+      medicationCompliance: 'no-concern',
+      functionalStatusFrailty: 'concern',
+      socialSupport: 'no-concern',
+      comments:
+        'Dialysis team reports intermittent oxygen use after treatments and reduced walking endurance.',
+    }),
     emergencyContact: {
       name: 'Janet Williams',
       relationship: 'Sister',
@@ -590,6 +620,17 @@ const buildLinda = (): Patient => {
       buildDoc(id, 'insurance-back', 'Insurance Card — back', 17 * 24),
     ],
     lastActivityAt: daysAgoIso(3),
+    referralClinicalSnapshot: referralSnapshot({
+      weightBmi: 'no-concern',
+      labs: {
+        phosphorus: 'concern',
+        albumin: 'concern',
+        ipth: 'no-concern',
+      },
+      medicationCompliance: 'no-concern',
+      socialSupport: 'no-concern',
+      htnControl: 'no-concern',
+    }),
     emergencyContact: {
       name: 'Carlos Rodriguez',
       relationship: 'Brother',
@@ -660,6 +701,16 @@ const buildJames = (): Patient => {
       buildDoc(id, 'insurance-back', 'Insurance Card — back', 7 * 24),
     ],
     lastActivityAt: hoursAgoIso(1 * 24),
+    referralClinicalSnapshot: referralSnapshot({
+      weightBmi: 'no-concern',
+      labs: {
+        potassium: 'no-concern',
+        phosphorus: 'no-concern',
+      },
+      medicationCompliance: 'no-concern',
+      functionalStatusFrailty: 'no-concern',
+      socialSupport: 'no-concern',
+    }),
     emergencyContact: {
       name: 'Anita Patel',
       relationship: 'Spouse',
@@ -729,6 +780,15 @@ const buildPatricia = (): Patient => {
       buildDoc(id, 'insurance-back', 'Insurance Card — back', 22),
     ],
     lastActivityAt: hoursAgoIso(18),
+    referralClinicalSnapshot: referralSnapshot({
+      weightBmi: 'no-concern',
+      labs: {
+        potassium: 'no-concern',
+        hemoglobin: 'no-concern',
+      },
+      medicationCompliance: 'no-concern',
+      functionalStatusFrailty: 'no-concern',
+    }),
   };
 };
 
@@ -791,6 +851,15 @@ const buildDavid = (): Patient => {
       buildDoc(id, 'insurance-back', 'Insurance Card — back', 24 * 24),
     ],
     lastActivityAt: hoursAgoIso(2 * 24 - 4),
+    referralClinicalSnapshot: referralSnapshot({
+      labs: {
+        potassium: 'no-concern',
+        albumin: 'no-concern',
+      },
+      medicationCompliance: 'no-concern',
+      htnControl: 'no-concern',
+      dmControl: 'no-concern',
+    }),
     emergencyContact: {
       name: 'Grace Kim',
       relationship: 'Daughter',
@@ -869,6 +938,12 @@ const buildElaine = (): Patient => {
       buildDoc(id, 'insurance-back', 'Insurance Card — back', 29 * 24),
     ],
     lastActivityAt: daysAgoIso(1),
+    referralClinicalSnapshot: referralSnapshot({
+      weightBmi: 'no-concern',
+      medicationCompliance: 'no-concern',
+      functionalStatusFrailty: 'no-concern',
+      socialSupport: 'no-concern',
+    }),
     emergencyContact: {
       name: 'Thomas Barnes',
       relationship: 'Son',
