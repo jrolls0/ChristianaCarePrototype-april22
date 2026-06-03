@@ -1,4 +1,12 @@
-import type { DocumentRecord, Message, Patient, PatientStage, ThreadKey, Todo } from '../types';
+import type {
+  DocumentRecord,
+  EndReferralRecord,
+  Message,
+  Patient,
+  PatientStage,
+  ThreadKey,
+  Todo,
+} from '../types';
 import { getNextPatientStage, PATIENT_STAGE_LABEL, normalizePatientStage } from '../stages';
 import { buildPatientCareTeam, type CareTeamRole } from '../knowledge/careTeamDirectory';
 import { getStageGuidance, type StageGuidance } from '../knowledge/stageGuidance';
@@ -14,6 +22,11 @@ export type AmeliaMessageContext = Pick<
 >;
 
 export type AmeliaDocumentContext = Pick<DocumentRecord, 'id' | 'name' | 'uploadedAt' | 'uploadedBy'>;
+
+export type AmeliaEndReferralContext = Pick<
+  EndReferralRecord,
+  'reasonLabel' | 'letterDraft' | 'endedAt' | 'endedBy'
+>;
 
 export type AmeliaPatientContext = {
   patientId: string;
@@ -46,6 +59,7 @@ export type AmeliaPatientContext = {
   messages: AmeliaMessageContext[];
   unreadMessages: AmeliaMessageContext[];
   screeningCompleted: boolean;
+  endReferral?: AmeliaEndReferralContext;
   stageGuidance: StageGuidance;
   careTeam: CareTeamRole[];
 };
@@ -134,6 +148,14 @@ export function buildAmeliaPatientContext(patient: Patient): AmeliaPatientContex
       (message) => !message.readByPatient && message.fromRole !== 'patient'
     ),
     screeningCompleted: Boolean(patient.screeningResponses),
+    endReferral: patient.endReferral
+      ? {
+          reasonLabel: patient.endReferral.reasonLabel,
+          letterDraft: patient.endReferral.letterDraft,
+          endedAt: patient.endReferral.endedAt,
+          endedBy: patient.endReferral.endedBy,
+        }
+      : undefined,
     stageGuidance: getStageGuidance(stage),
     careTeam: buildPatientCareTeam(patient),
   };

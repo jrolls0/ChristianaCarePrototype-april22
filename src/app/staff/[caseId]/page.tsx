@@ -95,7 +95,7 @@ const COCKPIT_TABS: Array<{ id: CockpitTab; label: string }> = [
   { id: 'documents', label: 'Documents' },
   { id: 'messages', label: 'Messages' },
   { id: 'scheduling', label: 'Scheduling' },
-  { id: 'end-reason', label: 'End Reason' },
+  { id: 'end-reason', label: 'End Referral' },
   { id: 'activity', label: 'Activity' },
 ];
 
@@ -2574,7 +2574,7 @@ function EndReasonTab({
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-              End Reason
+              End Referral
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-900">
               {patient.endReferral.reasonLabel}
@@ -2603,10 +2603,11 @@ function EndReasonTab({
     <>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="max-w-2xl">
-          <h3 className="text-base font-semibold text-slate-900">End Reason</h3>
+          <h3 className="text-base font-semibold text-slate-900">End Referral</h3>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
             Use this when the transplant center has reviewed the case and needs to end the referral.
-            This prototype saves the end reason and approved letter in the staff cockpit only.
+            This saves the end reason in the staff cockpit and makes the approved letter visible
+            in the patient portal.
           </p>
           <button
             type="button"
@@ -2695,7 +2696,8 @@ function EndReferralModal({
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            This action records an ended referral in the staff cockpit. Patient portal behavior will be designed later.
+            This action records an ended referral and makes the approved letter visible in the
+            patient portal.
           </div>
 
           <div>

@@ -502,6 +502,15 @@ function messagesAction(query: string): AmeliaAction | null {
   };
 }
 
+function openMessagesAction(): AmeliaAction {
+  return {
+    id: actionId('messages'),
+    kind: 'navigation',
+    label: 'Open Messages',
+    target: 'tab:messages',
+  };
+}
+
 function profileAction(query: string): AmeliaAction | null {
   const normalized = normalizeText(query);
   if (
@@ -520,6 +529,15 @@ function profileAction(query: string): AmeliaAction | null {
     kind: 'navigation',
     label: 'Open Profile',
     target: 'tab:profile',
+  };
+}
+
+function openEndReferralLetterAction(): AmeliaAction {
+  return {
+    id: actionId('end-referral-letter'),
+    kind: 'navigation',
+    label: 'View Referral Letter',
+    target: 'end-referral-letter',
   };
 }
 
@@ -565,6 +583,9 @@ function careTeamSummary(context: AmeliaPatientContext): string {
 }
 
 function nextStepResponse(context: AmeliaPatientContext): string {
+  if (context.endReferral) {
+    return 'Your transplant referral has been ended. You can review the referral letter in the portal for details. If you have questions, you can message the transplant center from Messages.';
+  }
   const pendingRequired = pendingRequiredTodos(context);
   if (context.stage === 'onboarding' && !context.roiSigned) {
     return 'Your next step is to finish onboarding: sign the two ROI forms and choose your communication preferences. After that, the app moves you into Initial To-Dos.';
@@ -603,6 +624,15 @@ export function deriveAmeliaActions(
 ): AmeliaAction[] {
   void _articles;
   if (safetyResponse(query)) return [];
+  if (context.endReferral) {
+    if (/\b(message|messages|ask|question|contact|reply|respond)\b/i.test(query)) {
+      return [openMessagesAction()];
+    }
+    if (/\b(letter|ended|end|reason|why|status|next|now|referral)\b/i.test(query)) {
+      return [openEndReferralLetterAction()];
+    }
+    return [];
+  }
   const lower = query.toLowerCase();
   const shouldDraft = wantsDraft(query);
 
@@ -650,6 +680,9 @@ export function generateLocalAmeliaResponse(payload: AmeliaRequestPayload): Amel
 
   if (safety) {
     content = safety;
+  } else if (context.endReferral) {
+    content =
+      'Your transplant referral has been ended. The referral letter in your portal has the details that were shared with you. If you have questions, you can message the transplant center from Messages.';
   } else if (/\b(message|messages|said|say|reply|inbox)\b/i.test(query) && !wantsDraft(query)) {
     content = messageSummary(context);
   } else if (/\b(document|documents|upload|uploaded|id|insurance card|roi)\b/i.test(query)) {
@@ -694,6 +727,12 @@ export function buildAmeliaSystemPrompt(
       nephrologist: payload.patientContext.nephrologistName,
       roiSigned: payload.patientContext.roiSigned,
       consents: payload.patientContext.communicationConsents,
+      endReferral: payload.patientContext.endReferral
+        ? {
+            reason: payload.patientContext.endReferral.reasonLabel,
+            endedAt: payload.patientContext.endReferral.endedAt,
+          }
+        : undefined,
     },
     todos: payload.patientContext.todos,
     documents: payload.patientContext.documents,
@@ -719,6 +758,7 @@ export function buildAmeliaSystemPrompt(
     'Do not invent button labels, links, or navigation destinations. The app may add a separate action button when there is a clear supported destination.',
     'If the patient asks to open, go to, or be taken to a supported task, thread, Messages, or Profile, do not say you cannot take them there. Answer briefly and mention that they can use the action button below if one appears.',
     'Do not send patients back to ROI forms after they are signed.',
+    'If endReferral exists, the referral has ended. Do not suggest uploads, to-dos, scheduling, stage progression, or next workflow steps. Tell the patient they can review the referral letter or message the transplant center with questions.',
     'If the user mentions urgent symptoms or emergency language, tell them to call 911 or seek urgent care now.',
     `Current patient context JSON:\n${JSON.stringify(compactContext)}`,
   ].join('\n\n');

@@ -255,6 +255,7 @@ export type AmeliaActionTarget =
   | 'tab:messages'
   | 'tab:profile'
   | 'tab:help'
+  | 'end-referral-letter'
   | 'todo:government-id'
   | 'todo:insurance-card'
   | 'todo:health-questionnaire'

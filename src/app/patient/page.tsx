@@ -44,6 +44,7 @@ import {
   UserRound,
   Users,
   X,
+  XCircle,
 } from 'lucide-react';
 import { useStore } from '../../lib/store';
 import { CLINIC_NAMES, findClinic } from '../../lib/clinicDirectory';
@@ -682,6 +683,7 @@ export default function MobilePrototypePage() {
   );
   const [messagesIntent, setMessagesIntent] = useState<MessagesIntent>(null);
   const [todoIntent, setTodoIntent] = useState<TodoIntent>(null);
+  const [endReferralLetterIntentId, setEndReferralLetterIntentId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState(seededDisplayName);
   const [showCoordinatorIntro, setShowCoordinatorIntro] = useState(false);
 
@@ -946,6 +948,13 @@ export default function MobilePrototypePage() {
       setMessagesIntent(null);
       return;
     }
+    if (action.target === 'end-referral-letter') {
+      setActiveTab('home');
+      setMessagesIntent(null);
+      setTodoIntent(null);
+      setEndReferralLetterIntentId(`${action.id}-${Date.now()}`);
+      return;
+    }
     if (action.target === 'tab:profile') {
       setActiveTab('profile');
       setMessagesIntent(null);
@@ -1091,8 +1100,13 @@ export default function MobilePrototypePage() {
                 <HomeTab
                   completedTodos={completedTodos}
                   displayName={displayName}
+                  endReferralLetterIntentId={endReferralLetterIntentId}
                   onCompleteTodo={handleTodoComplete}
                   onDocumentUpload={handleTodoDocumentUpload}
+                  onOpenMessages={() => {
+                    setActiveTab('messages');
+                    setMessagesIntent({ kind: 'openThread', id: `end-referral-${Date.now()}`, threadKey: 'tc-frontdesk' });
+                  }}
                   onOpenUnreadMessage={handleOpenUnreadMessage}
                   onSelectInitialEvaluationSlot={handleSelectInitialEvaluationSlot}
                   pendingTodos={pendingTodos}
@@ -2457,12 +2471,14 @@ function findTodoForAmeliaTarget(
 type HomeTabProps = {
   completedTodos: MockTodo[];
   displayName: string;
+  endReferralLetterIntentId?: string | null;
   onCompleteTodo: (
     todoId: string,
     screeningResponses?: ScreeningResponses,
     emergencyContact?: CarePartnerInvitePayload
   ) => void;
   onDocumentUpload: (documentName: string) => void;
+  onOpenMessages: () => void;
   onOpenUnreadMessage: () => void;
   onSelectInitialEvaluationSlot: (slotId: string) => void;
   pendingTodos: MockTodo[];
@@ -2473,8 +2489,10 @@ type HomeTabProps = {
 function HomeTab({
   completedTodos,
   displayName,
+  endReferralLetterIntentId,
   onCompleteTodo,
   onDocumentUpload,
+  onOpenMessages,
   onOpenUnreadMessage,
   onSelectInitialEvaluationSlot,
   pendingTodos,
@@ -2485,10 +2503,21 @@ function HomeTab({
   const [activeTodoId, setActiveTodoId] = useState<string | null>(null);
   const [calendarPromptSlot, setCalendarPromptSlot] =
     useState<StoreInitialEvaluationSlot | null>(null);
+  const [showEndReferralLetter, setShowEndReferralLetter] = useState(false);
   const activeTodo = pendingTodos.find((todo) => todo.id === activeTodoId) ?? null;
 
   useEffect(() => {
+    if (patient?.endReferral) setActiveTodoId(null);
+  }, [patient?.endReferral]);
+
+  useEffect(() => {
+    if (!patient?.endReferral || !endReferralLetterIntentId) return;
+    setShowEndReferralLetter(true);
+  }, [endReferralLetterIntentId, patient?.endReferral]);
+
+  useEffect(() => {
     if (!todoIntent || appliedTodoIntentId.current === todoIntent.id) return;
+    if (patient?.endReferral) return;
     const match = findTodoForAmeliaTarget(pendingTodos, todoIntent);
     appliedTodoIntentId.current = todoIntent.id;
     if (!match) return;
@@ -2522,6 +2551,18 @@ function HomeTab({
   } else {
     welcomeSubtext = (
       <>You&apos;re all caught up. We&apos;ll let you know when something needs you.</>
+    );
+  }
+
+  if (patient?.endReferral) {
+    return (
+      <EndedReferralHome
+        endReferral={patient.endReferral}
+        onCloseLetter={() => setShowEndReferralLetter(false)}
+        onOpenMessages={onOpenMessages}
+        onViewLetter={() => setShowEndReferralLetter(true)}
+        showLetter={showEndReferralLetter}
+      />
     );
   }
 
@@ -2621,6 +2662,158 @@ function HomeTab({
         />
       )}
 
+    </div>
+  );
+}
+
+function formatPatientPortalDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function EndedReferralHome({
+  endReferral,
+  onCloseLetter,
+  onOpenMessages,
+  onViewLetter,
+  showLetter,
+}: {
+  endReferral: NonNullable<StorePatient['endReferral']>;
+  onCloseLetter: () => void;
+  onOpenMessages: () => void;
+  onViewLetter: () => void;
+  showLetter: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-red-100 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+            <XCircle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-semibold text-slate-900">Referral Ended</p>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">
+              Your transplant referral has been ended. You can review the letter from the
+              transplant center in this portal.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl bg-red-50/70 p-3">
+          <div className="grid gap-3 text-sm">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-red-700">
+                Reason
+              </p>
+              <p className="mt-0.5 font-semibold text-slate-900">
+                {endReferral.reasonLabel}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-red-700">
+                Ended
+              </p>
+              <p className="mt-0.5 font-semibold text-slate-900">
+                {formatPatientPortalDate(endReferral.endedAt)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onViewLetter}
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(220,38,38,0.2)] transition hover:bg-red-700"
+        >
+          <FileText className="h-4 w-4" />
+          View Letter
+        </button>
+      </section>
+
+      <button
+        type="button"
+        onClick={onOpenMessages}
+        className="flex w-full items-center gap-3 rounded-2xl bg-white p-3.5 text-left shadow-[0_8px_24px_rgba(15,23,42,0.07)] transition hover:bg-[#f8fbff] focus:outline-none focus:ring-2 focus:ring-[#b8dcfb]"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eaf4fc] text-[#1a66cc]">
+          <Mail className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-900">Questions?</p>
+          <p className="text-xs text-slate-500">Message the transplant center.</p>
+        </div>
+        <ChevronRight className="h-4 w-4 text-[#1a66cc]" />
+      </button>
+
+      <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+        <div className="mb-2 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-slate-400" />
+          <h3 className="text-base font-semibold text-slate-900">To-Do List</h3>
+        </div>
+        <div className="rounded-xl bg-[#f4f7fb] p-3 text-sm font-medium text-slate-600">
+          There are no active referral tasks right now.
+        </div>
+      </section>
+
+      {showLetter && (
+        <EndReferralLetterModal endReferral={endReferral} onClose={onCloseLetter} />
+      )}
+    </div>
+  );
+}
+
+function EndReferralLetterModal({
+  endReferral,
+  onClose,
+}: {
+  endReferral: NonNullable<StorePatient['endReferral']>;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4 py-6 backdrop-blur-sm">
+      <div className="flex max-h-full w-full max-w-[390px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-[#e3ebf5] px-5 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">End Referral Letter</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              From: ChristianaCare Transplant Center
+            </p>
+            <p className="text-xs text-slate-500">
+              Approved: {formatPatientPortalDate(endReferral.endedAt)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close referral letter"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[#f7f9fc] p-4">
+          <pre className="whitespace-pre-wrap rounded-2xl bg-white p-4 text-sm leading-relaxed text-slate-700 shadow-sm ring-1 ring-slate-100">
+            {endReferral.letterDraft}
+          </pre>
+        </div>
+        <div className="border-t border-[#e3ebf5] bg-white px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex w-full items-center justify-center rounded-xl bg-[#1a66cc] px-4 py-3 text-sm font-semibold text-white shadow-sm"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -4218,6 +4411,28 @@ function renderAssistantContent(content: string): ReactNode[] {
 function createInitialAmeliaMessage(patient: StorePatient | null): AssistantMessage {
   const now = new Date().toISOString();
   const firstName = patient?.firstName || 'there';
+  if (patient?.endReferral) {
+    return {
+      id: `assistant-welcome-${patient.id}`,
+      role: 'assistant',
+      content: `Hi ${firstName}, I'm **Amelia**, your transplant referral guide. Your referral has been ended. You can review the referral letter in the portal or message the transplant center if you have questions.`,
+      createdAt: now,
+      actions: [
+        {
+          id: `welcome-end-referral-letter-${patient.id}`,
+          kind: 'navigation',
+          label: 'View Referral Letter',
+          target: 'end-referral-letter',
+        },
+        {
+          id: `welcome-end-referral-messages-${patient.id}`,
+          kind: 'navigation',
+          label: 'Open Messages',
+          target: 'tab:messages',
+        },
+      ],
+    };
+  }
   const pendingTodos = patient?.todos.filter((todo) => todo.status !== 'completed') ?? [];
   const taskCopy =
     pendingTodos.length > 0
