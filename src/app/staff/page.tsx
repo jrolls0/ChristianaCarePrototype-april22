@@ -27,7 +27,8 @@ import { schedulingSearchText } from '@/lib/initialEvaluationScheduling';
 import type { Patient, PatientStage } from '@/lib/types';
 
 type PriorityFilter = 'all' | 'stuck' | 'new' | 'self-signups';
-type StageKey = Exclude<PatientStage, 'new-referral'>;
+type LifecycleFilter = 'in-progress' | 'completed' | 'ended';
+type StageKey = Exclude<PatientStage, 'new-referral' | 'evaluation-scheduled'>;
 type StageFilter = 'all' | StageKey;
 
 const STAGE_FILTERS: { key: StageKey; label: string }[] = [
@@ -39,7 +40,6 @@ const STAGE_FILTERS: { key: StageKey; label: string }[] = [
   { key: 'final-decision', label: 'Final Decision' },
   { key: 'education', label: 'Education' },
   { key: 'scheduling', label: 'Scheduling' },
-  { key: 'evaluation-scheduled', label: 'Evaluation Scheduled' },
 ];
 
 const PRIORITY_LABEL: Record<PriorityFilter, string> = {
@@ -47,6 +47,12 @@ const PRIORITY_LABEL: Record<PriorityFilter, string> = {
   stuck: 'Needs action',
   new: 'New referrals',
   'self-signups': 'Self-signups',
+};
+
+const LIFECYCLE_LABEL: Record<LifecycleFilter, string> = {
+  'in-progress': 'In progress',
+  completed: 'Completed',
+  ended: 'Ended',
 };
 
 function isSelfSignupNeedingFollowup(p: Patient): boolean {
@@ -92,6 +98,14 @@ function matchesStage(patient: Patient, filter: StageFilter): boolean {
   return filter === 'all' || patient.stage === filter;
 }
 
+function matchesLifecycle(patient: Patient, filter: LifecycleFilter): boolean {
+  if (filter === 'ended') return Boolean(patient.endReferral);
+  if (filter === 'completed') {
+    return !patient.endReferral && patient.stage === 'evaluation-scheduled';
+  }
+  return !patient.endReferral && patient.stage !== 'evaluation-scheduled';
+}
+
 function daysInStageTone(days: number) {
   if (days >= 6) return 'text-red-700 bg-red-50 ring-red-200';
   if (days >= 4) return 'text-amber-700 bg-amber-50 ring-amber-200';
@@ -99,6 +113,7 @@ function daysInStageTone(days: number) {
 }
 
 function nextAction(patient: Patient): string {
+  if (patient.endReferral) return 'Referral ended';
   if (isSelfSignupNeedingFollowup(patient)) return 'Capture clinic info';
   if (patient.stage === 'initial-screening') return 'Review screening responses';
   if (patient.stage === 'scheduling') {
@@ -164,6 +179,7 @@ export default function StaffDashboardPage() {
   const allPatients = useStore((s) => s.patients);
   const router = useRouter();
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
+  const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>('in-progress');
   const [stageFilter, setStageFilter] = useState<StageFilter>('all');
   const [query, setQuery] = useState('');
   const [now] = useState<number>(() => Date.now());
@@ -173,43 +189,80 @@ export default function StaffDashboardPage() {
     [allPatients]
   );
 
-  const activeCases = patients.length;
-  const needsActionPatients = useMemo(() => patients.filter(needsStaffAction), [patients]);
+  const inProgressPatients = useMemo(
+    () => patients.filter((p) => matchesLifecycle(p, 'in-progress')),
+    [patients]
+  );
+  const completedPatients = useMemo(
+    () => patients.filter((p) => matchesLifecycle(p, 'completed')),
+    [patients]
+  );
+  const endedPatients = useMemo(
+    () => patients.filter((p) => matchesLifecycle(p, 'ended')),
+    [patients]
+  );
+
+  const activeCases = inProgressPatients.length;
+  const needsActionPatients = useMemo(
+    () => inProgressPatients.filter(needsStaffAction),
+    [inProgressPatients]
+  );
   const needsActionCount = needsActionPatients.length;
   const newThisWeek = useMemo(
-    () => patients.filter((p) => isNewThisWeek(p, now)).length,
-    [patients, now]
+    () => inProgressPatients.filter((p) => isNewThisWeek(p, now)).length,
+    [inProgressPatients, now]
   );
   const selfSignupsCount = useMemo(
-    () => patients.filter(isSelfSignupNeedingFollowup).length,
-    [patients]
+    () => inProgressPatients.filter(isSelfSignupNeedingFollowup).length,
+    [inProgressPatients]
   );
 
   const stageTabCounts = useMemo(() => {
     const result = {} as Record<StageKey, number>;
     for (const f of STAGE_FILTERS) {
-      result[f.key] = patients.filter((p) => matchesStage(p, f.key)).length;
+      result[f.key] = inProgressPatients.filter((p) => matchesStage(p, f.key)).length;
     }
     return result;
-  }, [patients]);
+  }, [inProgressPatients]);
 
   const filteredPatients = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const copy = patients.filter((p) => {
-      if (!matchesPriority(p, priorityFilter, now)) return false;
-      if (!matchesStage(p, stageFilter)) return false;
+      if (!matchesLifecycle(p, lifecycleFilter)) return false;
+      if (lifecycleFilter === 'in-progress') {
+        if (!matchesPriority(p, priorityFilter, now)) return false;
+        if (!matchesStage(p, stageFilter)) return false;
+      }
       if (normalizedQuery && !searchText(p).includes(normalizedQuery)) return false;
       return true;
     });
 
     return copy.sort((a, b) => {
+      if (lifecycleFilter === 'completed') {
+        return (
+          new Date(b.initialEvaluationScheduling?.selectedAt ?? b.lastActivityAt).getTime() -
+          new Date(a.initialEvaluationScheduling?.selectedAt ?? a.lastActivityAt).getTime()
+        );
+      }
+      if (lifecycleFilter === 'ended') {
+        return (
+          new Date(b.endReferral?.endedAt ?? b.lastActivityAt).getTime() -
+          new Date(a.endReferral?.endedAt ?? a.lastActivityAt).getTime()
+        );
+      }
       if (a.isStuck !== b.isStuck) return a.isStuck ? -1 : 1;
       const aClinic = a.referralSource === 'clinic';
       const bClinic = b.referralSource === 'clinic';
       if (aClinic !== bClinic) return aClinic ? -1 : 1;
       return b.daysInStage - a.daysInStage;
     });
-  }, [patients, priorityFilter, stageFilter, query, now]);
+  }, [patients, lifecycleFilter, priorityFilter, stageFilter, query, now]);
+
+  const selectLifecycle = (filter: LifecycleFilter) => {
+    setLifecycleFilter(filter);
+    setPriorityFilter('all');
+    setStageFilter('all');
+  };
 
   return (
     <StaffShell>
@@ -241,8 +294,11 @@ export default function StaffDashboardPage() {
               description="Every patient in the pipeline"
               icon={ListChecks}
               tone="slate"
-              active={priorityFilter === 'all'}
-              onClick={() => setPriorityFilter('all')}
+              active={lifecycleFilter === 'in-progress' && priorityFilter === 'all'}
+              onClick={() => {
+                selectLifecycle('in-progress');
+                setPriorityFilter('all');
+              }}
             />
             <PriorityCard
               label="Needs action"
@@ -254,8 +310,11 @@ export default function StaffDashboardPage() {
               }
               icon={AlertTriangle}
               tone="red"
-              active={priorityFilter === 'stuck'}
-              onClick={() => setPriorityFilter('stuck')}
+              active={lifecycleFilter === 'in-progress' && priorityFilter === 'stuck'}
+              onClick={() => {
+                selectLifecycle('in-progress');
+                setPriorityFilter('stuck');
+              }}
             />
             <PriorityCard
               label="New referrals"
@@ -263,8 +322,11 @@ export default function StaffDashboardPage() {
               description="Referred in the last 7 days"
               icon={Sparkles}
               tone="blue"
-              active={priorityFilter === 'new'}
-              onClick={() => setPriorityFilter('new')}
+              active={lifecycleFilter === 'in-progress' && priorityFilter === 'new'}
+              onClick={() => {
+                selectLifecycle('in-progress');
+                setPriorityFilter('new');
+              }}
             />
             <PriorityCard
               label="Self-signups"
@@ -272,8 +334,11 @@ export default function StaffDashboardPage() {
               description="Need clinic follow-up"
               icon={UserPlus}
               tone="amber"
-              active={priorityFilter === 'self-signups'}
-              onClick={() => setPriorityFilter('self-signups')}
+              active={lifecycleFilter === 'in-progress' && priorityFilter === 'self-signups'}
+              onClick={() => {
+                selectLifecycle('in-progress');
+                setPriorityFilter('self-signups');
+              }}
             />
           </div>
         </section>
@@ -284,12 +349,41 @@ export default function StaffDashboardPage() {
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Case queue controls</h3>
                 <p className="text-xs text-slate-500">
-                  Showing {filteredPatients.length}{' '}
-                  {filteredPatients.length === 1 ? 'case' : 'cases'} in{' '}
-                  <span className="font-medium text-slate-700">
-                    {PRIORITY_LABEL[priorityFilter]}
-                  </span>
+                  Showing {filteredPatients.length} {filteredPatients.length === 1 ? 'case' : 'cases'} in{' '}
+                  <span className="font-medium text-slate-700">{LIFECYCLE_LABEL[lifecycleFilter]}</span>
+                  {lifecycleFilter === 'in-progress' && (
+                    <>
+                      {' '}
+                      · <span className="font-medium text-slate-700">{PRIORITY_LABEL[priorityFilter]}</span>
+                    </>
+                  )}
                 </p>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Case status
+              </div>
+              <div className="inline-flex flex-wrap gap-1 rounded-2xl bg-slate-100 p-1">
+                <LifecycleChip
+                  label="In progress"
+                  count={inProgressPatients.length}
+                  active={lifecycleFilter === 'in-progress'}
+                  onClick={() => selectLifecycle('in-progress')}
+                />
+                <LifecycleChip
+                  label="Completed"
+                  count={completedPatients.length}
+                  active={lifecycleFilter === 'completed'}
+                  onClick={() => selectLifecycle('completed')}
+                />
+                <LifecycleChip
+                  label="Ended"
+                  count={endedPatients.length}
+                  active={lifecycleFilter === 'ended'}
+                  onClick={() => selectLifecycle('ended')}
+                />
               </div>
             </div>
 
@@ -323,28 +417,36 @@ export default function StaffDashboardPage() {
               </div>
             </div>
 
-            <div>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Stage
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <StageChip
-                  label="All"
-                  count={activeCases}
-                  active={stageFilter === 'all'}
-                  onClick={() => setStageFilter('all')}
-                />
-                {STAGE_FILTERS.map((f) => (
+            {lifecycleFilter === 'in-progress' ? (
+              <div>
+                <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Stage
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
                   <StageChip
-                    key={f.key}
-                    label={f.label}
-                    count={stageTabCounts[f.key]}
-                    active={stageFilter === f.key}
-                    onClick={() => setStageFilter(f.key)}
+                    label="All"
+                    count={activeCases}
+                    active={stageFilter === 'all'}
+                    onClick={() => setStageFilter('all')}
                   />
-                ))}
+                  {STAGE_FILTERS.map((f) => (
+                    <StageChip
+                      key={f.key}
+                      label={f.label}
+                      count={stageTabCounts[f.key]}
+                      active={stageFilter === f.key}
+                      onClick={() => setStageFilter(f.key)}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                {lifecycleFilter === 'completed'
+                  ? 'Completed cases are patients who successfully scheduled their initial evaluation.'
+                  : 'Ended referrals are patients whose referral was closed by the transplant center.'}
+              </div>
+            )}
           </div>
         </section>
 
@@ -574,6 +676,41 @@ function StageChip({
         className={clsx(
           'rounded-full px-1.5 text-xs tabular-nums',
           active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function LifecycleChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition',
+        active
+          ? 'bg-white text-slate-950 shadow-sm ring-1 ring-slate-200'
+          : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
+      )}
+    >
+      {label}
+      <span
+        className={clsx(
+          'rounded-full px-1.5 text-xs tabular-nums',
+          active ? 'bg-[#eef6ff] text-[#1a66cc]' : 'bg-white/80 text-slate-500'
         )}
       >
         {count}

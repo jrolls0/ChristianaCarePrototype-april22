@@ -4227,7 +4227,7 @@ function createInitialAmeliaMessage(patient: StorePatient | null): AssistantMess
   return {
     id: `assistant-welcome-${patient?.id ?? 'guest'}`,
     role: 'assistant',
-    content: `Hi ${firstName}, I'm **Amelia**, your ChristianaCare transplant guide. ${taskCopy}\n\nI can guide you, but I will not complete tasks, upload documents, sign forms, or send messages for you.`,
+    content: `Hi ${firstName}, I'm **Amelia**, your transplant referral guide. ${taskCopy}\n\nI can guide you, but I will not complete tasks, upload documents, sign forms, or send messages for you.`,
     createdAt: now,
     actions:
       pendingTodos.length > 0
