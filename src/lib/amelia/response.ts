@@ -58,6 +58,7 @@ function todoTarget(type: Todo['type']): AmeliaActionTarget {
   if (type === 'complete-health-questionnaire') return 'todo:health-questionnaire';
   if (type === 'add-emergency-contact') return 'todo:emergency-contact';
   if (type === 'watch-education-video') return 'todo:education';
+  if (type === 'schedule-initial-evaluation') return 'todo:schedule-initial-evaluation';
   return 'todo:custom';
 }
 
@@ -115,6 +116,7 @@ function actionForTodo(todo: AmeliaPatientContext['todos'][number], label?: stri
     'complete-health-questionnaire': 'Open Health Questionnaire',
     'add-emergency-contact': 'Open Emergency Contact To-Do',
     'watch-education-video': 'Open Education To-Do',
+    'schedule-initial-evaluation': 'Open Schedule Initial Evaluation',
   };
   return {
     id: actionId('todo'),
@@ -344,6 +346,22 @@ function explicitTodoAction(query: string, context: AmeliaPatientContext): Ameli
 
   if (
     hasAny(normalized, [
+      /\bschedule\b/,
+      /\bscheduling\b/,
+      /\bappointment\b/,
+      /\bevaluation appointment\b/,
+      /\binitial evaluation\b/,
+      /\bpick a time\b/,
+      /\bchoose a time\b/,
+    ]) ||
+    hasApproximateWord(normalized, 'schedule')
+  ) {
+    const todo = pendingTodoOfType(context, 'schedule-initial-evaluation');
+    return todo ? actionForTodo(todo, 'Open Schedule Initial Evaluation') : null;
+  }
+
+  if (
+    hasAny(normalized, [
       /\bemergency contact\b/,
       /\bcare partner\b/,
       /\bbackup contact\b/,
@@ -557,6 +575,13 @@ function nextStepResponse(context: AmeliaPatientContext): string {
   }
   if (context.stage === 'initial-screening') {
     return 'Your required intake tasks are complete. ChristianaCare is now reviewing your health questionnaire responses in Initial Screening. Watch Messages for any questions from the care team.';
+  }
+  const schedulingTodo = pendingTodoOfType(context, 'schedule-initial-evaluation');
+  if (schedulingTodo) {
+    return 'ChristianaCare has sent available times for your initial evaluation. Your next step is to open Schedule Initial Evaluation and choose the appointment time that works best for you.';
+  }
+  if (context.stage === 'evaluation-scheduled') {
+    return 'Your initial evaluation is scheduled. This completes the current Transplant Wizard referral workflow in this demo.';
   }
   return `${context.stageGuidance.patientSummary} ${context.stageGuidance.patientCanDo[0] ?? 'Watch for updates from your care team.'}`;
 }

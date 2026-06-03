@@ -39,7 +39,7 @@ export const AMELIA_KNOWLEDGE: KnowledgeArticle[] = [
     category: 'process',
     aliases: ['steps', 'stage', 'stages', 'process', 'workflow', 'what happens next', 'evaluation'],
     summary:
-      'The prototype workflow is Onboarding, Initial To-Dos, Initial Screening, Financial Screening, Records & Clinical Review, Final Decision, Education, and Scheduling.',
+      'The prototype workflow is Onboarding, Initial To-Dos, Initial Screening, Financial Screening, Records & Clinical Review, Final Decision, Education, Scheduling, and Evaluation Scheduled.',
     body: [
       'Patient-owned work happens mostly during Onboarding, Initial To-Dos, and Education.',
       'ChristianaCare-owned work begins in Initial Screening, when staff review questionnaire responses and decide whether to move the case forward.',

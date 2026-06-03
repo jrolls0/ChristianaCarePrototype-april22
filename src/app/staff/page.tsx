@@ -23,6 +23,7 @@ import { ScreeningReviewBadge } from '@/components/ui/ScreeningReviewBadge';
 import { useStore } from '@/lib/store';
 import { PATIENT_STAGE_LABEL } from '@/lib/stages';
 import { referralSnapshotSearchText } from '@/lib/referralClinicalSnapshot';
+import { schedulingSearchText } from '@/lib/initialEvaluationScheduling';
 import type { Patient, PatientStage } from '@/lib/types';
 
 type PriorityFilter = 'all' | 'stuck' | 'new' | 'self-signups';
@@ -38,6 +39,7 @@ const STAGE_FILTERS: { key: StageKey; label: string }[] = [
   { key: 'final-decision', label: 'Final Decision' },
   { key: 'education', label: 'Education' },
   { key: 'scheduling', label: 'Scheduling' },
+  { key: 'evaluation-scheduled', label: 'Evaluation Scheduled' },
 ];
 
 const PRIORITY_LABEL: Record<PriorityFilter, string> = {
@@ -60,11 +62,16 @@ function hasUnreadStaffMessage(patient: Patient): boolean {
   return patient.messages.some((m) => !m.readByStaff && m.fromRole !== 'staff');
 }
 
+function schedulingNeedsStaffAction(patient: Patient): boolean {
+  return patient.stage === 'scheduling' && !patient.initialEvaluationScheduling?.sentAt;
+}
+
 function needsStaffAction(patient: Patient): boolean {
   return (
     patient.isStuck ||
     isSelfSignupNeedingFollowup(patient) ||
-    patient.stage === 'initial-screening'
+    patient.stage === 'initial-screening' ||
+    schedulingNeedsStaffAction(patient)
   );
 }
 
@@ -94,6 +101,12 @@ function daysInStageTone(days: number) {
 function nextAction(patient: Patient): string {
   if (isSelfSignupNeedingFollowup(patient)) return 'Capture clinic info';
   if (patient.stage === 'initial-screening') return 'Review screening responses';
+  if (patient.stage === 'scheduling') {
+    return patient.initialEvaluationScheduling?.sentAt
+      ? 'Waiting for patient to schedule'
+      : 'Send evaluation times';
+  }
+  if (patient.stage === 'evaluation-scheduled') return 'Evaluation scheduled';
   if (patient.isStuck) return 'Unblock case';
   if (hasUnreadStaffMessage(patient)) return 'Reply in Inbox';
   return 'Open case';
@@ -112,6 +125,7 @@ function searchText(patient: Patient): string {
     PATIENT_STAGE_LABEL[patient.stage],
     nextAction(patient),
     referralSnapshotSearchText(patient.referralClinicalSnapshot),
+    schedulingSearchText(patient.initialEvaluationScheduling),
   ]
     .filter(Boolean)
     .join(' ')

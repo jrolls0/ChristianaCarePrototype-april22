@@ -6,6 +6,7 @@ import type {
   AmeliaChatMessage,
   DemoState,
   DocumentRecord,
+  InitialEvaluationSlot,
   Message,
   MessageRole,
   Patient,
@@ -15,6 +16,11 @@ import type {
 } from './types';
 import { createInitialState } from './seedData';
 import { getNextPatientStage, normalizePatientStage } from './stages';
+import {
+  SCHEDULE_INITIAL_EVALUATION_TODO_TYPE,
+  isValidFutureSlot,
+  schedulingTodoId,
+} from './initialEvaluationScheduling';
 
 export const STORAGE_KEY = 'transplant-prototype-state-v1';
 
@@ -199,6 +205,44 @@ function advanceAfterInitialTodos(patient: Patient, now: string): Patient {
     daysInStage: 0,
     isStuck: false,
     lastActivityAt: now,
+  };
+}
+
+function advanceAfterEducationTodo(patient: Patient, completedTodo: Todo | undefined, now: string): Patient {
+  if (normalizePatientStage(patient.stage) !== 'education') return patient;
+  if (completedTodo?.type !== 'watch-education-video') return patient;
+  return {
+    ...patient,
+    stage: 'scheduling',
+    daysInStage: 0,
+    isStuck: false,
+    lastActivityAt: now,
+  };
+}
+
+function buildSchedulingTodo(patientId: string, now: string): Todo {
+  return {
+    id: schedulingTodoId(patientId),
+    type: SCHEDULE_INITIAL_EVALUATION_TODO_TYPE,
+    title: 'Schedule Initial Evaluation',
+    description: 'Choose one of the available appointment times from ChristianaCare.',
+    status: 'pending',
+    addedAt: now,
+  };
+}
+
+function withSchedulingTodo(patient: Patient, now: string): Patient {
+  const existing = patient.todos.find(
+    (todo) => todo.type === SCHEDULE_INITIAL_EVALUATION_TODO_TYPE
+  );
+  const todo = existing
+    ? { ...existing, status: 'pending' as const, completedAt: undefined }
+    : buildSchedulingTodo(patient.id, now);
+  return {
+    ...patient,
+    todos: existing
+      ? patient.todos.map((candidate) => (candidate.id === existing.id ? todo : candidate))
+      : [...patient.todos, todo],
   };
 }
 
@@ -630,7 +674,7 @@ export const useStore = create<DemoState>()(
                   : t
               ),
             };
-            return advanceAfterInitialTodos(updated, now);
+            return advanceAfterEducationTodo(advanceAfterInitialTodos(updated, now), todo, now);
           }),
         });
       },
@@ -703,6 +747,69 @@ export const useStore = create<DemoState>()(
               addedAt: now,
             };
             return { ...p, todos: [...p.todos, todo], lastActivityAt: now };
+          }),
+        });
+      },
+
+      sendInitialEvaluationSlots: (patientId, slots) => {
+        const nowDate = new Date();
+        const now = nowDate.toISOString();
+        const validSlots: InitialEvaluationSlot[] = slots
+          .filter((slot) => isValidFutureSlot(slot, nowDate))
+          .map((slot, index) => ({
+            id: `eval-slot-${patientId}-${nextIdSuffix()}-${index}`,
+            date: slot.date,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          }));
+        if (validSlots.length === 0) return;
+        const staffName = get().currentStaffName;
+        set({
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId || normalizePatientStage(p.stage) !== 'scheduling') {
+              return p;
+            }
+            const withTodo = withSchedulingTodo(p, now);
+            return {
+              ...withTodo,
+              initialEvaluationScheduling: {
+                slots: validSlots,
+                sentAt: now,
+                sentBy: staffName,
+              },
+              lastActivityAt: now,
+            };
+          }),
+        });
+      },
+
+      selectInitialEvaluationSlot: (patientId, slotId) => {
+        const now = new Date().toISOString();
+        set({
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId || normalizePatientStage(p.stage) !== 'scheduling') {
+              return p;
+            }
+            const scheduling = p.initialEvaluationScheduling;
+            const selected = scheduling?.slots.find((slot) => slot.id === slotId);
+            if (!scheduling || !selected) return p;
+            return {
+              ...p,
+              stage: 'evaluation-scheduled',
+              daysInStage: 0,
+              isStuck: false,
+              initialEvaluationScheduling: {
+                ...scheduling,
+                selectedSlotId: selected.id,
+                selectedAt: now,
+              },
+              todos: p.todos.map((todo) =>
+                todo.type === SCHEDULE_INITIAL_EVALUATION_TODO_TYPE
+                  ? { ...todo, status: 'completed', completedAt: now }
+                  : todo
+              ),
+              lastActivityAt: now,
+            };
           }),
         });
       },
@@ -920,7 +1027,13 @@ export const useStore = create<DemoState>()(
           patients: get().patients.map((p) => {
             if (p.id !== patientId) return p;
             const currentStage = normalizePatientStage(p.stage);
-            if (currentStage === 'onboarding' || currentStage === 'initial-todos') {
+            if (
+              currentStage === 'onboarding' ||
+              currentStage === 'initial-todos' ||
+              currentStage === 'education' ||
+              currentStage === 'scheduling' ||
+              currentStage === 'evaluation-scheduled'
+            ) {
               return p;
             }
             const nextStage = getNextPatientStage(currentStage);

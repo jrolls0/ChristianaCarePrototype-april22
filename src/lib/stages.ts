@@ -11,6 +11,7 @@ export const VISIBLE_PATIENT_STAGES = [
   'final-decision',
   'education',
   'scheduling',
+  'evaluation-scheduled',
 ] as const satisfies readonly PatientStage[];
 
 export const PATIENT_STAGE_ORDER = [
@@ -28,6 +29,7 @@ export const PATIENT_STAGE_LABEL: Record<PatientStage, string> = {
   'final-decision': 'Final Decision',
   education: 'Education',
   scheduling: 'Scheduling',
+  'evaluation-scheduled': 'Evaluation Scheduled',
 };
 
 export const PATIENT_STAGE_SHORT_LABEL: Record<PatientStage, string> = {
@@ -40,6 +42,7 @@ export const PATIENT_STAGE_SHORT_LABEL: Record<PatientStage, string> = {
   'final-decision': 'Decision',
   education: 'Education',
   scheduling: 'Scheduling',
+  'evaluation-scheduled': 'Scheduled',
 };
 
 export const PATIENT_STAGE_TONE: Record<PatientStage, string> = {
@@ -52,6 +55,7 @@ export const PATIENT_STAGE_TONE: Record<PatientStage, string> = {
   'final-decision': 'bg-teal-50 text-teal-700 ring-teal-200',
   education: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
   scheduling: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  'evaluation-scheduled': 'bg-emerald-50 text-emerald-700 ring-emerald-200',
 };
 
 const LEGACY_STAGE_MAP: Record<string, PatientStage> = {
@@ -63,6 +67,7 @@ const LEGACY_STAGE_MAP: Record<string, PatientStage> = {
   'records-collection': 'records-clinical-review',
   'specialist-review': 'records-clinical-review',
   scheduled: 'scheduling',
+  'evaluation-scheduled': 'evaluation-scheduled',
 };
 
 export function normalizePatientStage(stage: unknown): PatientStage {

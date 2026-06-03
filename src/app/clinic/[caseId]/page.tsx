@@ -40,6 +40,7 @@ import {
   referralSnapshotLabConcernCount,
   referralSnapshotValueLabel,
 } from '@/lib/referralClinicalSnapshot';
+import { formatSlotRange, selectedInitialEvaluationSlot } from '@/lib/initialEvaluationScheduling';
 import { PATIENT_STAGE_LABEL, PATIENT_STAGE_SHORT_LABEL, VISIBLE_PATIENT_STAGES } from '@/lib/stages';
 import { useStore } from '@/lib/store';
 import type { DocumentRecord, Patient, Todo } from '@/lib/types';
@@ -170,7 +171,7 @@ export default function ClinicCasePage() {
 }
 
 function PatientHeader({ patient }: { patient: Patient }) {
-  const waiting = waitingOnLabel(patient.stage);
+  const waiting = waitingOnLabel(patient);
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-5">
@@ -314,7 +315,9 @@ function WorkflowProgress({ patient }: { patient: Patient }) {
     0,
     VISIBLE_PATIENT_STAGES.findIndex((stage) => stage === patient.stage)
   );
-  const progress = currentIndex / (VISIBLE_PATIENT_STAGES.length - 1);
+  const stageCount = VISIBLE_PATIENT_STAGES.length;
+  const progress = currentIndex / (stageCount - 1);
+  const railInsetPct = 50 / stageCount;
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -330,12 +333,18 @@ function WorkflowProgress({ patient }: { patient: Patient }) {
         </span>
       </div>
       <div className="relative mt-6">
-        <div className="absolute left-[6.25%] right-[6.25%] top-5 h-1 rounded-full bg-slate-100" />
         <div
-          className="absolute left-[6.25%] top-5 h-1 rounded-full bg-[#1a66cc]"
-          style={{ width: `${progress * 87.5}%` }}
+          className="absolute top-5 h-1 rounded-full bg-slate-100"
+          style={{ left: `${railInsetPct}%`, right: `${railInsetPct}%` }}
         />
-        <div className="relative grid grid-cols-8 gap-2">
+        <div
+          className="absolute top-5 h-1 rounded-full bg-[#1a66cc]"
+          style={{ left: `${railInsetPct}%`, width: `${progress * (100 - railInsetPct * 2)}%` }}
+        />
+        <div
+          className="relative grid gap-2"
+          style={{ gridTemplateColumns: `repeat(${stageCount}, minmax(0, 1fr))` }}
+        >
           {VISIBLE_PATIENT_STAGES.map((stage, index) => {
             const done = index < currentIndex;
             const current = index === currentIndex;
@@ -371,9 +380,10 @@ function WorkflowProgress({ patient }: { patient: Patient }) {
 }
 
 function SummaryTab({ patient }: { patient: Patient }) {
-  const waiting = waitingOnLabel(patient.stage);
+  const waiting = waitingOnLabel(patient);
   const completedTodos = patient.todos.filter((todo) => todo.status === 'completed').length;
   const roiCount = clinicRoiDocuments(patient).length;
+  const selectedSlot = selectedInitialEvaluationSlot(patient.initialEvaluationScheduling);
 
   return (
     <div className="space-y-5">
@@ -388,6 +398,20 @@ function SummaryTab({ patient }: { patient: Patient }) {
             The clinic can track ChristianaCare-side progress, view completed ROI forms,
             upload clinic documents, and message the Front Desk team.
           </p>
+          {(patient.stage === 'scheduling' || patient.stage === 'evaluation-scheduled') && (
+            <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
+              <p className="text-sm font-semibold text-emerald-950">
+                {selectedSlot ? 'Initial evaluation scheduled' : 'Initial evaluation scheduling'}
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-emerald-900">
+                {selectedSlot
+                  ? formatSlotRange(selectedSlot)
+                  : patient.initialEvaluationScheduling?.sentAt
+                    ? 'ChristianaCare sent appointment times. Waiting for the patient to choose.'
+                    : 'ChristianaCare is preparing appointment times.'}
+              </p>
+            </div>
+          )}
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

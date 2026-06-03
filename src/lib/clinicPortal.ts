@@ -3,7 +3,7 @@ import type { DocumentRecord, Patient, PatientStage } from '@/lib/types';
 import { CLINIC_PATIENT_THREAD_KEY, CLINIC_THREAD_KEY } from '@/lib/clinicInbox';
 import { referralSnapshotSearchText } from '@/lib/referralClinicalSnapshot';
 
-export const AWAITING_PATIENT_STAGES: PatientStage[] = ['onboarding', 'initial-todos'];
+export const AWAITING_PATIENT_STAGES: PatientStage[] = ['onboarding', 'initial-todos', 'education'];
 export const SERVICES_ROI_DOCUMENT = 'Services ROI';
 export const MEDICAL_ROI_DOCUMENT = 'Medical Records ROI';
 
@@ -28,12 +28,21 @@ export function formatDate(iso: string): string {
   });
 }
 
-export function waitingOnLabel(stage: PatientStage): {
+export function waitingOnLabel(patientOrStage: PatientStage | Pick<Patient, 'stage' | 'initialEvaluationScheduling'>): {
   label: string;
   tone: 'patient' | 'transplant-center';
 } {
+  const stage = typeof patientOrStage === 'string' ? patientOrStage : patientOrStage.stage;
+  const scheduling =
+    typeof patientOrStage === 'string' ? undefined : patientOrStage.initialEvaluationScheduling;
   if (AWAITING_PATIENT_STAGES.includes(stage)) {
     return { label: 'Patient', tone: 'patient' };
+  }
+  if (stage === 'scheduling' && scheduling?.sentAt) {
+    return { label: 'Patient', tone: 'patient' };
+  }
+  if (stage === 'evaluation-scheduled') {
+    return { label: 'Evaluation scheduled', tone: 'patient' };
   }
   return { label: 'Transplant Center', tone: 'transplant-center' };
 }

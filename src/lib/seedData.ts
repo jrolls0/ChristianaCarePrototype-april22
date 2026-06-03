@@ -13,6 +13,10 @@ import type {
 const hoursAgoIso = (h: number): string =>
   new Date(Date.now() - h * 60 * 60 * 1000).toISOString();
 const daysAgoIso = (d: number): string => hoursAgoIso(d * 24);
+const daysFromNowDate = (d: number): string => {
+  const date = new Date(Date.now() + d * 24 * 60 * 60 * 1000);
+  return date.toISOString().slice(0, 10);
+};
 
 const STAFF_NAME = 'Sarah Martinez';
 const STAFF_TITLE = 'Front Desk Coordinator';
@@ -907,6 +911,15 @@ const buildElaine = (): Patient => {
         status: 'completed',
         completedHoursAgo: 4 * 24,
       }),
+      buildTodo({
+        patientId: id,
+        type: 'schedule-initial-evaluation',
+        slug: 'schedule-initial-evaluation',
+        title: 'Schedule Initial Evaluation',
+        description: 'Choose one of the available appointment times from ChristianaCare.',
+        status: 'pending',
+        completedHoursAgo: undefined,
+      }),
     ],
     messages: [
       buildMessage({
@@ -937,6 +950,24 @@ const buildElaine = (): Patient => {
       buildDoc(id, 'insurance-front', 'Insurance Card — front', 29 * 24),
       buildDoc(id, 'insurance-back', 'Insurance Card — back', 29 * 24),
     ],
+    initialEvaluationScheduling: {
+      slots: [
+        {
+          id: 'eval-slot-elaine-1',
+          date: daysFromNowDate(6),
+          startTime: '09:00',
+          endTime: '11:00',
+        },
+        {
+          id: 'eval-slot-elaine-2',
+          date: daysFromNowDate(8),
+          startTime: '13:00',
+          endTime: '15:00',
+        },
+      ],
+      sentAt: hoursAgoIso(18),
+      sentBy: STAFF_NAME,
+    },
     lastActivityAt: daysAgoIso(1),
     referralClinicalSnapshot: referralSnapshot({
       weightBmi: 'no-concern',

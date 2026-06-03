@@ -115,12 +115,28 @@ export const AMELIA_STAGE_GUIDANCE: Record<PatientStage, StageGuidance> = {
   scheduling: {
     stage: 'scheduling',
     label: PATIENT_STAGE_LABEL.scheduling,
-    owner: 'transplant-center',
+    owner: 'shared',
     patientSummary:
-      'The transplant center is coordinating the next appointment outside this patient app.',
-    patientCanDo: ['Reply to messages about availability.'],
-    avoidPromising: 'Do not book, reschedule, or cancel appointments.',
-    primaryActionTarget: 'tab:messages',
+      'ChristianaCare is preparing appointment options for the initial evaluation, or the patient may need to choose from available times if a scheduling task is shown.',
+    patientCanDo: [
+      'Choose an available time if Schedule Initial Evaluation appears in the To-Do List.',
+      'Reply to messages if none of the available times work.',
+    ],
+    avoidPromising: 'Do not claim an appointment is booked until the patient has selected a slot.',
+    primaryActionTarget: 'tab:home',
+  },
+  'evaluation-scheduled': {
+    stage: 'evaluation-scheduled',
+    label: PATIENT_STAGE_LABEL['evaluation-scheduled'],
+    owner: 'shared',
+    patientSummary:
+      'The patient selected an initial evaluation appointment time.',
+    patientCanDo: [
+      'Review the scheduled appointment details in the Home tab.',
+      'Message ChristianaCare if the appointment needs to change.',
+    ],
+    avoidPromising: 'Do not reschedule, cancel, or change the appointment on the patient’s behalf.',
+    primaryActionTarget: 'tab:home',
   },
 };
 

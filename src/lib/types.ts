@@ -7,7 +7,8 @@ export type PatientStage =
   | 'records-clinical-review'
   | 'final-decision'
   | 'education'
-  | 'scheduling';
+  | 'scheduling'
+  | 'evaluation-scheduled';
 
 export type TodoType =
   | 'sign-roi-services'
@@ -17,6 +18,7 @@ export type TodoType =
   | 'upload-insurance-card'
   | 'complete-health-questionnaire'
   | 'watch-education-video'
+  | 'schedule-initial-evaluation'
   | 'custom';
 
 export type TodoStatus = 'pending' | 'completed';
@@ -129,6 +131,21 @@ export interface EndReferralRecord {
   endedBy: string;
 }
 
+export interface InitialEvaluationSlot {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface InitialEvaluationScheduling {
+  slots: InitialEvaluationSlot[];
+  sentAt?: string;
+  sentBy?: string;
+  selectedSlotId?: string;
+  selectedAt?: string;
+}
+
 export interface PatientProfilePhysician {
   id: string;
   name: string;
@@ -188,6 +205,7 @@ export interface Patient {
   endReferral?: EndReferralRecord;
   profileOverrides?: PatientProfileOverrides;
   referralClinicalSnapshot?: ReferralClinicalSnapshot;
+  initialEvaluationScheduling?: InitialEvaluationScheduling;
 }
 
 export interface ReferralSubmission {
@@ -242,6 +260,7 @@ export type AmeliaActionTarget =
   | 'todo:health-questionnaire'
   | 'todo:emergency-contact'
   | 'todo:education'
+  | 'todo:schedule-initial-evaluation'
   | 'todo:custom'
   | 'message-thread:tc-frontdesk'
   | 'message-thread:dusw';
@@ -338,6 +357,11 @@ export interface DemoState {
   ) => void;
   addEmergencyContactTodo: (patientId: string) => void;
   addEducationTodo: (patientId: string) => void;
+  sendInitialEvaluationSlots: (
+    patientId: string,
+    slots: Array<Omit<InitialEvaluationSlot, 'id'>>
+  ) => void;
+  selectInitialEvaluationSlot: (patientId: string, slotId: string) => void;
   ensureInitialTodos: (patientId: string) => void;
   sendMessage: (
     patientId: string,

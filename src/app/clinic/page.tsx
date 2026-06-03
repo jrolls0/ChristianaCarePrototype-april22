@@ -8,7 +8,6 @@ import { ClinicShell, CLINIC_CONTAINER } from '@/components/ui/ClinicShell';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { clinicScopedPatients } from '@/lib/clinicInbox';
 import {
-  AWAITING_PATIENT_STAGES,
   clinicDocuments,
   clinicSearchText,
   hasClinicUnread,
@@ -42,7 +41,7 @@ export default function ClinicDashboardPage() {
   const filteredPatients = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return patients.filter((patient) => {
-      const waiting = waitingOnLabel(patient.stage);
+      const waiting = waitingOnLabel(patient);
       if (filter === 'patient' && waiting.tone !== 'patient') return false;
       if (filter === 'transplant-center' && waiting.tone !== 'transplant-center') {
         return false;
@@ -55,11 +54,11 @@ export default function ClinicDashboardPage() {
     });
   }, [patients, filter, query]);
 
-  const waitingOnPatient = patients.filter((patient) =>
-    AWAITING_PATIENT_STAGES.includes(patient.stage)
+  const waitingOnPatient = patients.filter(
+    (patient) => waitingOnLabel(patient).tone === 'patient'
   ).length;
   const waitingOnTransplantCenter = patients.filter(
-    (patient) => waitingOnLabel(patient.stage).tone === 'transplant-center'
+    (patient) => waitingOnLabel(patient).tone === 'transplant-center'
   ).length;
   const unreadMessages = patients.filter(hasClinicUnread).length;
 
@@ -159,7 +158,7 @@ export default function ClinicDashboardPage() {
                   </tr>
                 ) : (
                   filteredPatients.map((patient) => {
-                    const waiting = waitingOnLabel(patient.stage);
+                    const waiting = waitingOnLabel(patient);
                     return (
                       <tr key={patient.id} className="group transition hover:bg-[#f5faff]">
                         <td className="px-5 py-4">

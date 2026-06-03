@@ -43,6 +43,7 @@ import {
   SendHorizontal,
   UserRound,
   Users,
+  X,
 } from 'lucide-react';
 import { useStore } from '../../lib/store';
 import { CLINIC_NAMES, findClinic } from '../../lib/clinicDirectory';
@@ -54,6 +55,7 @@ import type {
   AmeliaConversation,
   DocumentRequest as StoreDocumentRequest,
   EmergencyContact as StoreEmergencyContact,
+  InitialEvaluationSlot as StoreInitialEvaluationSlot,
   Patient as StorePatient,
   PatientRegistrationResult,
   ScreeningResponses,
@@ -64,6 +66,11 @@ import {
   type Attachment,
   appendAttachmentSummary,
 } from '../../lib/attachments';
+import {
+  formatSlotDate,
+  formatSlotRange,
+  selectedInitialEvaluationSlot,
+} from '../../lib/initialEvaluationScheduling';
 import { AttachButton, AttachmentChips } from '../../components/ui/AttachmentRow';
 
 type OnboardingStep =
@@ -98,6 +105,7 @@ type TodoIntent = {
     | 'todo:health-questionnaire'
     | 'todo:emergency-contact'
     | 'todo:education'
+    | 'todo:schedule-initial-evaluation'
     | 'todo:custom'
   >;
   todoId?: string;
@@ -116,6 +124,7 @@ type MockTodo = {
     | 'healthQuestionnaire'
     | 'carePartnerInvite'
     | 'educationVideo'
+    | 'scheduleInitialEvaluation'
     | 'customStaffTodo';
   addedByStaff?: string;
   documentRequests?: StoreDocumentRequest[];
@@ -253,6 +262,7 @@ const HOME_VISIBLE_STORE_TYPES: ReadonlySet<StoreTodo['type']> = new Set([
   'complete-health-questionnaire',
   'add-emergency-contact',
   'watch-education-video',
+  'schedule-initial-evaluation',
   'custom',
 ]);
 
@@ -268,7 +278,9 @@ function mapStoreTodoToUi(todo: StoreTodo): MockTodo {
             ? 'carePartnerInvite'
             : todo.type === 'watch-education-video'
               ? 'educationVideo'
-              : 'customStaffTodo';
+              : todo.type === 'schedule-initial-evaluation'
+                ? 'scheduleInitialEvaluation'
+                : 'customStaffTodo';
   const priority: MockTodo['priority'] =
     todo.type === 'upload-government-id'
       ? 'high'
@@ -278,6 +290,8 @@ function mapStoreTodoToUi(todo: StoreTodo): MockTodo {
           ? 'low'
           : todo.type === 'watch-education-video'
             ? 'low'
+            : todo.type === 'schedule-initial-evaluation'
+              ? 'medium'
             : todo.type === 'custom'
               ? 'medium'
               : 'low';
@@ -634,6 +648,7 @@ export default function MobilePrototypePage() {
   const saveAmeliaConversationAction = useStore((s) => s.saveAmeliaConversation);
   const resetAmeliaConversationAction = useStore((s) => s.resetAmeliaConversation);
   const saveScreeningResponsesAction = useStore((s) => s.saveScreeningResponses);
+  const selectInitialEvaluationSlotAction = useStore((s) => s.selectInitialEvaluationSlot);
   const ameliaConversation = useStore((s) =>
     currentPatientId ? s.ameliaConversations[currentPatientId] : undefined
   );
@@ -893,6 +908,11 @@ export default function MobilePrototypePage() {
     uploadDocumentAction(patientId, documentName, 'patient');
   }
 
+  function handleSelectInitialEvaluationSlot(slotId: string) {
+    if (!patientId) return;
+    selectInitialEvaluationSlotAction(patientId, slotId);
+  }
+
   function handleOpenUnreadMessage() {
     setActiveTab('messages');
     setMessagesIntent({ kind: 'openFirstUnread', id: `unread-${Date.now()}` });
@@ -1074,6 +1094,7 @@ export default function MobilePrototypePage() {
                   onCompleteTodo={handleTodoComplete}
                   onDocumentUpload={handleTodoDocumentUpload}
                   onOpenUnreadMessage={handleOpenUnreadMessage}
+                  onSelectInitialEvaluationSlot={handleSelectInitialEvaluationSlot}
                   pendingTodos={pendingTodos}
                   patient={currentPatient}
                   todoIntent={todoIntent}
@@ -2427,6 +2448,7 @@ function findTodoForAmeliaTarget(
     'todo:health-questionnaire': 'healthQuestionnaire',
     'todo:emergency-contact': 'carePartnerInvite',
     'todo:education': 'educationVideo',
+    'todo:schedule-initial-evaluation': 'scheduleInitialEvaluation',
   };
   const todoType = targetToType[todoIntent.target];
   return todoType ? pendingTodos.find((todo) => todo.type === todoType) : undefined;
@@ -2442,6 +2464,7 @@ type HomeTabProps = {
   ) => void;
   onDocumentUpload: (documentName: string) => void;
   onOpenUnreadMessage: () => void;
+  onSelectInitialEvaluationSlot: (slotId: string) => void;
   pendingTodos: MockTodo[];
   patient: StorePatient | null;
   todoIntent?: TodoIntent;
@@ -2453,12 +2476,15 @@ function HomeTab({
   onCompleteTodo,
   onDocumentUpload,
   onOpenUnreadMessage,
+  onSelectInitialEvaluationSlot,
   pendingTodos,
   patient,
   todoIntent,
 }: HomeTabProps) {
   const appliedTodoIntentId = useRef<string | null>(null);
   const [activeTodoId, setActiveTodoId] = useState<string | null>(null);
+  const [calendarPromptSlot, setCalendarPromptSlot] =
+    useState<StoreInitialEvaluationSlot | null>(null);
   const activeTodo = pendingTodos.find((todo) => todo.id === activeTodoId) ?? null;
 
   useEffect(() => {
@@ -2479,6 +2505,7 @@ function HomeTab({
         : 0,
     [patient]
   );
+  const scheduledSlot = selectedInitialEvaluationSlot(patient?.initialEvaluationScheduling);
 
   let welcomeSubtext: ReactNode;
   if (pendingTodos.length > 0) {
@@ -2509,6 +2536,16 @@ function HomeTab({
             setActiveTodoId(null);
           }}
           onDocumentUpload={onDocumentUpload}
+          onSelectInitialEvaluationSlot={(slotId) => {
+            const slot =
+              patient?.initialEvaluationScheduling?.slots.find(
+                (candidate) => candidate.id === slotId
+              ) ?? null;
+            if (slot) setCalendarPromptSlot(slot);
+            onSelectInitialEvaluationSlot(slotId);
+            setActiveTodoId(null);
+          }}
+          scheduling={patient?.initialEvaluationScheduling}
           todo={activeTodo}
         />
       </div>
@@ -2524,6 +2561,24 @@ function HomeTab({
       </section>
 
       <MessagesRow unreadCount={unreadCareMessages} onOpenUnread={onOpenUnreadMessage} />
+
+      {scheduledSlot && (
+        <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eaf8f0] text-emerald-600">
+              <CalendarDays className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                Initial Evaluation Scheduled
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                {formatSlotRange(scheduledSlot)}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]">
         <div className="mb-3 flex items-center gap-2">
@@ -2558,6 +2613,13 @@ function HomeTab({
           )}
         </div>
       </section>
+
+      {calendarPromptSlot && (
+        <CalendarExportPromptModal
+          onClose={() => setCalendarPromptSlot(null)}
+          slot={calendarPromptSlot}
+        />
+      )}
 
     </div>
   );
@@ -2657,6 +2719,8 @@ function TodoTaskWorkspace({
   onClose,
   onComplete,
   onDocumentUpload,
+  onSelectInitialEvaluationSlot,
+  scheduling,
   todo,
 }: {
   documents: StorePatient['documents'];
@@ -2666,6 +2730,8 @@ function TodoTaskWorkspace({
     emergencyContact?: CarePartnerInvitePayload
   ) => void;
   onDocumentUpload: (documentName: string) => void;
+  onSelectInitialEvaluationSlot: (slotId: string) => void;
+  scheduling?: StorePatient['initialEvaluationScheduling'];
   todo: MockTodo;
 }) {
   if (todo.type === 'governmentIdUpload') {
@@ -2693,6 +2759,15 @@ function TodoTaskWorkspace({
   }
   if (todo.type === 'educationVideo') {
     return <EducationTaskCard onClose={onClose} onComplete={onComplete} />;
+  }
+  if (todo.type === 'scheduleInitialEvaluation') {
+    return (
+      <InitialEvaluationSchedulingTaskCard
+        onClose={onClose}
+        onSelectSlot={onSelectInitialEvaluationSlot}
+        scheduling={scheduling}
+      />
+    );
   }
   if (todo.type === 'customStaffTodo') {
     return (
@@ -2901,6 +2976,204 @@ function EducationTaskCard({
         Mark Education Complete
       </button>
     </TodoWorkspaceShell>
+  );
+}
+
+function InitialEvaluationSchedulingTaskCard({
+  onClose,
+  onSelectSlot,
+  scheduling,
+}: {
+  onClose: () => void;
+  onSelectSlot: (slotId: string) => void;
+  scheduling?: StorePatient['initialEvaluationScheduling'];
+}) {
+  const [selectedSlotId, setSelectedSlotId] = useState<string>(
+    scheduling?.selectedSlotId ?? ''
+  );
+  const selectedSlot = scheduling?.slots.find((slot) => slot.id === selectedSlotId);
+
+  return (
+    <TodoWorkspaceShell
+      onClose={onClose}
+      title="Schedule Initial Evaluation"
+      subtitle="Choose one of the available appointment times from ChristianaCare."
+    >
+      {!scheduling?.slots.length ? (
+        <div className="rounded-xl border border-[#d7e4f1] bg-[#f8fbff] p-3 text-sm leading-relaxed text-slate-700">
+          ChristianaCare has not sent appointment times yet. We&apos;ll add this task once times are available.
+        </div>
+      ) : (
+        <>
+          <div className="rounded-xl border border-[#d7e4f1] bg-[#f8fbff] p-3 text-sm leading-relaxed text-slate-700">
+            ChristianaCare sent these available times for your initial evaluation. Select the
+            appointment time that works best for you.
+          </div>
+
+          <div className="space-y-2">
+            {scheduling.slots.map((slot) => {
+              const active = selectedSlotId === slot.id;
+              return (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => setSelectedSlotId(slot.id)}
+                  className={`flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition ${
+                    active
+                      ? 'border-[#3399e6] bg-[#eef6ff] ring-2 ring-[#dbeeff]'
+                      : 'border-[#d7e4f1] bg-white hover:bg-[#f8fbff]'
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                      active
+                        ? 'border-[#3399e6] bg-[#3399e6]'
+                        : 'border-slate-300 bg-white'
+                    }`}
+                  >
+                    {active && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3.5} />}
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-900">
+                      {formatSlotDate(slot)}
+                    </span>
+                    <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                      {formatSlotRange(slot).split(' · ')[1]}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedSlot && (
+            <div className="rounded-xl bg-[#eef8f2] px-3 py-2.5 text-xs leading-relaxed text-emerald-800">
+              Selected: <span className="font-semibold">{formatSlotRange(selectedSlot)}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => selectedSlotId && onSelectSlot(selectedSlotId)}
+            disabled={!selectedSlotId}
+            className={`inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition ${
+              selectedSlotId
+                ? 'bg-[#3399e6] shadow-[0_10px_20px_rgba(51,153,230,0.32)]'
+                : 'bg-slate-300'
+            }`}
+          >
+            Confirm Selected Time
+          </button>
+        </>
+      )}
+    </TodoWorkspaceShell>
+  );
+}
+
+function CalendarExportPromptModal({
+  onClose,
+  slot,
+}: {
+  onClose: () => void;
+  slot: StoreInitialEvaluationSlot;
+}) {
+  const [selectedCalendar, setSelectedCalendar] = useState<string | null>(null);
+  const calendarOptions = ['Google Calendar', 'Apple Calendar', 'Outlook Calendar'];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 px-4 pb-6 pt-16 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <section
+        className="w-full max-w-[390px] overflow-hidden rounded-3xl bg-white shadow-[0_24px_70px_rgba(15,23,42,0.35)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1a66cc]">
+              Appointment Confirmed
+            </p>
+            <h3 className="mt-1 text-lg font-bold text-slate-900">Add to Calendar?</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+            aria-label="Close calendar prompt"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-5">
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+                <CalendarDays className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-emerald-950">
+                  Initial Evaluation
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-emerald-900">
+                  {formatSlotRange(slot)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-slate-900">
+              Choose a calendar option
+            </p>
+            <div className="mt-2 grid gap-2">
+              {calendarOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setSelectedCalendar(option)}
+                  className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                    selectedCalendar === option
+                      ? 'border-[#3399e6] bg-[#eef6ff] text-[#1a66cc] ring-2 ring-[#dbeeff]'
+                      : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  {option}
+                  {selectedCalendar === option && (
+                    <CheckCircle2 className="h-4 w-4 text-[#1a66cc]" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {selectedCalendar && (
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-relaxed text-blue-800">
+              {selectedCalendar} export is simulated in this prototype. No external calendar
+              event was created.
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 border-t border-slate-100 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Not now
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-2xl bg-[#1a66cc] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1558ad]"
+          >
+            Done
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 

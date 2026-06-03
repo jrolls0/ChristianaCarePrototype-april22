@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Building2,
+  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -55,8 +56,21 @@ import {
   VISIBLE_PATIENT_STAGES,
   getNextPatientStage,
 } from '@/lib/stages';
+import {
+  formatSlotDate,
+  formatSlotRange,
+  isValidFutureSlot,
+  selectedInitialEvaluationSlot,
+} from '@/lib/initialEvaluationScheduling';
 import { useStore } from '@/lib/store';
-import type { DocumentRecord, Patient, ScreeningResponses, ThreadKey, Todo } from '@/lib/types';
+import type {
+  DocumentRecord,
+  InitialEvaluationSlot,
+  Patient,
+  ScreeningResponses,
+  ThreadKey,
+  Todo,
+} from '@/lib/types';
 
 const TODO_TEMPLATES = [
   'Upload additional documentation',
@@ -70,6 +84,7 @@ type CockpitTab =
   | 'screening'
   | 'documents'
   | 'messages'
+  | 'scheduling'
   | 'end-reason'
   | 'activity';
 
@@ -79,6 +94,7 @@ const COCKPIT_TABS: Array<{ id: CockpitTab; label: string }> = [
   { id: 'screening', label: 'Screening' },
   { id: 'documents', label: 'Documents' },
   { id: 'messages', label: 'Messages' },
+  { id: 'scheduling', label: 'Scheduling' },
   { id: 'end-reason', label: 'End Reason' },
   { id: 'activity', label: 'Activity' },
 ];
@@ -187,6 +203,17 @@ function nextActionFor(patient: Patient): string {
   if (patient.endReferral) return 'Referral ended';
   if (patient.referralSource === 'self' && !patient.referringClinic) return 'Capture clinic info';
   if (patient.stage === 'initial-screening') return 'Review screening responses';
+  if (patient.stage === 'scheduling') {
+    return patient.initialEvaluationScheduling?.sentAt
+      ? 'Waiting for patient to schedule'
+      : 'Send initial evaluation times';
+  }
+  if (patient.stage === 'evaluation-scheduled') {
+    const selected = selectedInitialEvaluationSlot(patient.initialEvaluationScheduling);
+    return selected
+      ? `Initial evaluation scheduled for ${formatSlotRange(selected)}`
+      : 'Initial evaluation scheduled';
+  }
   if (patient.isStuck) return 'Unblock current stage';
   const pendingTodo = patient.todos.find((todo) => todo.status === 'pending');
   if (pendingTodo) return `Waiting on ${patient.firstName}: ${pendingTodo.title}`;
@@ -284,6 +311,31 @@ function buildActivity(patient: Patient): ActivityEvent[] {
       });
     });
 
+  if (patient.initialEvaluationScheduling?.sentAt) {
+    events.push({
+      id: `eval-slots-${patient.id}`,
+      at: patient.initialEvaluationScheduling.sentAt,
+      label: 'Initial evaluation times sent',
+      detail: `${patient.initialEvaluationScheduling.slots.length} available ${
+        patient.initialEvaluationScheduling.slots.length === 1 ? 'time' : 'times'
+      } offered`,
+      icon: CalendarDays,
+      tone: 'blue',
+    });
+  }
+
+  const selectedSlot = selectedInitialEvaluationSlot(patient.initialEvaluationScheduling);
+  if (selectedSlot && patient.initialEvaluationScheduling?.selectedAt) {
+    events.push({
+      id: `eval-selected-${patient.id}`,
+      at: patient.initialEvaluationScheduling.selectedAt,
+      label: 'Initial evaluation scheduled',
+      detail: formatSlotRange(selectedSlot),
+      icon: CheckCircle2,
+      tone: 'emerald',
+    });
+  }
+
   if (patient.endReferral) {
     events.push({
       id: `end-${patient.id}`,
@@ -324,6 +376,7 @@ export default function StaffCaseDetailPage() {
   const sendMessage = useStore((s) => s.sendMessage);
   const markThreadRead = useStore((s) => s.markThreadRead);
   const advanceStage = useStore((s) => s.advancePatientStage);
+  const sendInitialEvaluationSlots = useStore((s) => s.sendInitialEvaluationSlots);
   const uploadDocument = useStore((s) => s.uploadDocument);
   const endReferral = useStore((s) => s.endReferral);
 
@@ -404,7 +457,10 @@ export default function StaffCaseDetailPage() {
     );
   }
 
-  const nextStage = getNextPatientStage(patient.stage);
+  const nextStage =
+    patient.stage === 'scheduling' || patient.stage === 'evaluation-scheduled'
+      ? null
+      : getNextPatientStage(patient.stage);
 
   function handleQuickReply(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -493,6 +549,12 @@ export default function StaffCaseDetailPage() {
               onChangeReply={setQuickReply}
               onRemoveAttachment={removeQuickReplyAttachment}
               onSubmit={handleQuickReply}
+            />
+          )}
+          {activeCockpitTab === 'scheduling' && (
+            <SchedulingTab
+              patient={patient}
+              onSendSlots={(slots) => sendInitialEvaluationSlots(patient.id, slots)}
             />
           )}
           {activeCockpitTab === 'end-reason' && (
@@ -732,7 +794,13 @@ function WorkflowProgress({
   const stageCount = VISIBLE_PATIENT_STAGES.length;
   const progressPct = stageCount > 1 ? (currentIndex / (stageCount - 1)) * 100 : 100;
   const disabled = Boolean(patient.endReferral || !nextStage);
-  const patientOwnedStage = patient.stage === 'onboarding' || patient.stage === 'initial-todos';
+  const patientOwnedStage =
+    patient.stage === 'onboarding' ||
+    patient.stage === 'initial-todos' ||
+    patient.stage === 'education';
+  const schedulingStage = patient.stage === 'scheduling';
+  const scheduledStage = patient.stage === 'evaluation-scheduled';
+  const railInsetPct = 50 / stageCount;
 
   return (
     <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -746,7 +814,19 @@ function WorkflowProgress({
         {patientOwnedStage ? (
           <div className="inline-flex w-fit items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600">
             <Clock className="h-4 w-4" />
-            Patient completes this step in the portal
+            {patient.stage === 'education'
+              ? 'Patient completes education in the portal'
+              : 'Patient completes this step in the portal'}
+          </div>
+        ) : schedulingStage ? (
+          <div className="inline-flex w-fit items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-100">
+            <CalendarDays className="h-4 w-4" />
+            Send available times in the Scheduling tab
+          </div>
+        ) : scheduledStage ? (
+          <div className="inline-flex w-fit items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-100">
+            <CheckCircle2 className="h-4 w-4" />
+            Initial evaluation scheduled
           </div>
         ) : (
           <button
@@ -767,13 +847,19 @@ function WorkflowProgress({
 
       <div className="mt-5 overflow-x-auto pb-1">
         <div className="relative min-w-[720px] pt-1">
-          <div className="absolute left-[6.25%] right-[6.25%] top-[18px] h-2 rounded-full bg-slate-100">
+          <div
+            className="absolute top-[18px] h-2 rounded-full bg-slate-100"
+            style={{ left: `${railInsetPct}%`, right: `${railInsetPct}%` }}
+          >
             <div
               className="h-full rounded-full bg-gradient-to-r from-[#3399e6] to-[#1a66cc]"
               style={{ width: `${progressPct}%` }}
             />
           </div>
-          <div className="relative grid grid-cols-8">
+          <div
+            className="relative grid"
+            style={{ gridTemplateColumns: `repeat(${stageCount}, minmax(0, 1fr))` }}
+          >
             {VISIBLE_PATIENT_STAGES.map((stage, index) => {
               const isComplete = index < currentIndex;
               const isCurrent = index === currentIndex;
@@ -941,6 +1027,7 @@ function SummaryTab({
               : 'Use the tabs below to review the current case work and move the referral forward.'}
         </p>
 
+        <SchedulingSummaryCallout patient={patient} onSwitchTab={onSwitchTab} />
         <ClinicReferralSnapshotSummary patient={patient} />
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -998,6 +1085,53 @@ function SummaryTab({
         </div>
         <ActivityList activity={activity.slice(0, 6)} />
       </section>
+    </div>
+  );
+}
+
+function SchedulingSummaryCallout({
+  onSwitchTab,
+  patient,
+}: {
+  onSwitchTab: (tab: CockpitTab) => void;
+  patient: Patient;
+}) {
+  if (patient.stage !== 'scheduling' && patient.stage !== 'evaluation-scheduled') return null;
+  const selected = selectedInitialEvaluationSlot(patient.initialEvaluationScheduling);
+  const slotsSent = Boolean(patient.initialEvaluationScheduling?.sentAt);
+  const title =
+    patient.stage === 'evaluation-scheduled'
+      ? 'Initial evaluation scheduled'
+      : slotsSent
+        ? 'Waiting for patient to choose'
+        : 'Send initial evaluation times';
+  const detail =
+    selected
+      ? `${patient.firstName} selected ${formatSlotRange(selected)}.`
+      : slotsSent
+        ? `${patient.initialEvaluationScheduling?.slots.length ?? 0} appointment ${
+            patient.initialEvaluationScheduling?.slots.length === 1 ? 'time was' : 'times were'
+          } sent to the patient.`
+        : 'Add available appointment windows so the patient can choose a time in the portal.';
+
+  return (
+    <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50/70 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-emerald-950">{title}</h4>
+          <p className="mt-1 text-sm leading-relaxed text-emerald-900">{detail}</p>
+        </div>
+        {patient.stage === 'scheduling' && (
+          <button
+            type="button"
+            onClick={() => onSwitchTab('scheduling')}
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+          >
+            <CalendarDays className="h-4 w-4" />
+            Open Scheduling
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1077,7 +1211,9 @@ function TodosTab({
     ['upload-government-id', 'upload-insurance-card', 'complete-health-questionnaire'].includes(todo.type)
   );
   const optionalRows = patient.todos.filter((todo) => todo.type === 'add-emergency-contact');
-  const customRows = patient.todos.filter((todo) => todo.type === 'custom' || todo.type === 'watch-education-video');
+  const customRows = patient.todos.filter((todo) =>
+    ['custom', 'watch-education-video', 'schedule-initial-evaluation'].includes(todo.type)
+  );
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -2113,6 +2249,296 @@ function MsgTabButton({
         <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
       )}
     </button>
+  );
+}
+
+type DraftEvaluationSlot = Omit<InitialEvaluationSlot, 'id'> & { id: string };
+
+function SchedulingTab({
+  onSendSlots,
+  patient,
+}: {
+  onSendSlots: (slots: Array<Omit<InitialEvaluationSlot, 'id'>>) => void;
+  patient: Patient;
+}) {
+  const selected = selectedInitialEvaluationSlot(patient.initialEvaluationScheduling);
+  const slotsSent = Boolean(patient.initialEvaluationScheduling?.sentAt);
+  const readyForScheduling =
+    patient.stage === 'scheduling' || patient.stage === 'evaluation-scheduled';
+  const [editing, setEditing] = useState(false);
+  const [draftSlots, setDraftSlots] = useState<DraftEvaluationSlot[]>([]);
+  const [date, setDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setEditing(patient.stage === 'scheduling' && !slotsSent);
+    setDraftSlots(
+      patient.initialEvaluationScheduling?.slots.map((slot) => ({
+        id: `draft-${slot.id}`,
+        date: slot.date,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+      })) ?? []
+    );
+    setDate('');
+    setStartTime('');
+    setEndTime('');
+    setError('');
+  }, [patient.id, patient.stage, patient.initialEvaluationScheduling?.sentAt, slotsSent]);
+
+  if (!readyForScheduling) {
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="text-base font-semibold text-slate-900">Scheduling</h3>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          This case is not ready for initial evaluation scheduling yet. The scheduling workspace
+          becomes active when the case reaches the Scheduling stage.
+        </p>
+      </section>
+    );
+  }
+
+  if (patient.stage === 'evaluation-scheduled') {
+    return (
+      <section className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">
+              Initial Evaluation Scheduled
+            </h3>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">
+              {selected
+                ? `${patient.firstName} selected ${formatSlotRange(selected)}.`
+                : `${patient.firstName} has completed the scheduling step.`}
+            </p>
+            {patient.initialEvaluationScheduling?.selectedAt && (
+              <p className="mt-2 text-xs font-medium text-slate-500">
+                Selected {relativeTime(patient.initialEvaluationScheduling.selectedAt)}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="mt-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 ring-1 ring-emerald-100">
+          This completes the current Transplant Wizard referral workflow.
+        </div>
+      </section>
+    );
+  }
+
+  function handleAddSlot() {
+    const slot = { date, startTime, endTime };
+    if (!isValidFutureSlot(slot)) {
+      setError('Add a future date with an end time after the start time.');
+      return;
+    }
+    setDraftSlots((previous) => [
+      ...previous,
+      { id: `draft-${Date.now()}-${previous.length}`, ...slot },
+    ]);
+    setDate('');
+    setStartTime('');
+    setEndTime('');
+    setError('');
+  }
+
+  function handleSendSlots() {
+    const validSlots = draftSlots.filter((slot) => isValidFutureSlot(slot));
+    if (validSlots.length === 0) {
+      setError('Add at least one future appointment time before sending.');
+      return;
+    }
+    onSendSlots(
+      validSlots.map((slot) => ({
+        date: slot.date,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+      }))
+    );
+    setEditing(false);
+    setError('');
+  }
+
+  if (slotsSent && !editing) {
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">
+              Initial Evaluation Scheduling
+            </h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Waiting for {patient.firstName} to choose a time.
+            </p>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              Sent by {patient.initialEvaluationScheduling?.sentBy ?? 'Sarah Martinez'} ·{' '}
+              {patient.initialEvaluationScheduling?.sentAt
+                ? relativeTime(patient.initialEvaluationScheduling.sentAt)
+                : 'recently'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex w-fit items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#3399e6] hover:text-[#1a66cc]"
+          >
+            <CalendarDays className="h-4 w-4" />
+            Replace available times
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {patient.initialEvaluationScheduling?.slots.map((slot) => (
+            <div
+              key={slot.id}
+              className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3"
+            >
+              <p className="text-sm font-semibold text-slate-900">{formatSlotDate(slot)}</p>
+              <p className="mt-1 text-sm text-slate-600">
+                {formatSlotRange(slot).split(' · ')[1]}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">
+            Initial Evaluation Scheduling
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Add available times for the patient to choose from in the patient portal.
+          </p>
+        </div>
+        {slotsSent && (
+          <span className="inline-flex w-fit rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">
+            Replacing previously sent times
+          </span>
+        )}
+      </div>
+
+      <div className="mt-5 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_1fr_1fr_auto]">
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Date
+          </label>
+          <input
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+            className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Start time
+          </label>
+          <input
+            type="time"
+            value={startTime}
+            onChange={(event) => setStartTime(event.target.value)}
+            className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            End time
+          </label>
+          <input
+            type="time"
+            value={endTime}
+            onChange={(event) => setEndTime(event.target.value)}
+            className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
+          />
+        </div>
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={handleAddSlot}
+            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-white px-4 text-sm font-semibold text-[#1a66cc] ring-1 ring-[#cfe5fb] transition hover:bg-[#eef6ff] lg:w-auto"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Add slot
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+        <div className="grid grid-cols-[minmax(0,1fr)_140px] bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <span>Available time</span>
+          <span className="text-right">Action</span>
+        </div>
+        {draftSlots.length === 0 ? (
+          <div className="px-4 py-6 text-sm text-slate-500">
+            No appointment times added yet.
+          </div>
+        ) : (
+          draftSlots.map((slot) => (
+            <div
+              key={slot.id}
+              className="grid grid-cols-[minmax(0,1fr)_140px] items-center border-t border-slate-100 px-4 py-3"
+            >
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{formatSlotDate(slot)}</p>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  {formatSlotRange(slot).split(' · ')[1]}
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraftSlots((previous) =>
+                      previous.filter((candidate) => candidate.id !== slot.id)
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-red-50 hover:text-red-700"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        {slotsSent && (
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleSendSlots}
+          disabled={draftSlots.length === 0}
+          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#1a66cc] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1558ad] disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          <Send className="h-4 w-4" />
+          Send to Patient
+        </button>
+      </div>
+    </section>
   );
 }
 
