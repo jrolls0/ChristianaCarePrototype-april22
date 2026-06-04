@@ -14,6 +14,7 @@ import {
   Stethoscope,
   UserPlus,
   X,
+  XCircle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { StaffShell, STAFF_CONTAINER } from '@/components/ui/StaffShell';
@@ -112,8 +113,22 @@ function daysInStageTone(days: number) {
   return 'text-emerald-700 bg-emerald-50 ring-emerald-200';
 }
 
+function relativeTime(iso: string): string {
+  const timestamp = new Date(iso).getTime();
+  if (Number.isNaN(timestamp)) return 'recently';
+  const diffMs = Date.now() - timestamp;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'yesterday';
+  return `${days}d ago`;
+}
+
 function nextAction(patient: Patient): string {
-  if (patient.endReferral) return 'Referral ended';
+  if (patient.endReferral) return 'View end details';
   if (isSelfSignupNeedingFollowup(patient)) return 'Capture clinic info';
   if (patient.stage === 'initial-screening') return 'Review screening responses';
   if (patient.stage === 'scheduling') {
@@ -481,12 +496,13 @@ export default function StaffDashboardPage() {
                     key={p.id}
                     className={clsx(
                       'group relative cursor-pointer transition hover:bg-[#f5faff]',
-                      p.isStuck && 'bg-red-50/30'
+                      p.endReferral && 'bg-red-50/30 hover:bg-red-50/50',
+                      !p.endReferral && p.isStuck && 'bg-red-50/30'
                     )}
                     onClick={() => router.push(`/staff/${p.id}`)}
                   >
                     <td className="relative px-5 py-4">
-                      {p.isStuck && (
+                      {!p.endReferral && p.isStuck && (
                         <span
                           aria-hidden
                           className="absolute bottom-2 left-0 top-2 w-1 rounded-r bg-red-500"
@@ -498,10 +514,18 @@ export default function StaffDashboardPage() {
                       <SourceCell patient={p} />
                     </td>
                     <td className="px-4 py-4">
-                      <StatusPill stage={p.stage} />
+                      {p.endReferral ? (
+                        <EndedReferralStatus patient={p} />
+                      ) : (
+                        <StatusPill stage={p.stage} />
+                      )}
                     </td>
                     <td className="px-4 py-4">
-                      <SlaBadge days={p.daysInStage} />
+                      {p.endReferral ? (
+                        <EndedAtBadge endedAt={p.endReferral.endedAt} />
+                      ) : (
+                        <SlaBadge days={p.daysInStage} />
+                      )}
                     </td>
                     <td className="px-4 py-4">
                       <span className="text-sm font-medium text-slate-700">
@@ -531,7 +555,7 @@ export default function StaffDashboardPage() {
 
 function PatientIdentity({ patient }: { patient: Patient }) {
   const alertBadge =
-    patient.stage === 'initial-screening' ? (
+    patient.endReferral ? null : patient.stage === 'initial-screening' ? (
       <ScreeningReviewBadge className="px-2 py-0.5" />
     ) : patient.isStuck ? (
       <StuckBadge days={patient.daysInStage} className="px-2 py-0.5" />
@@ -563,6 +587,22 @@ function PatientIdentity({ patient }: { patient: Patient }) {
   );
 }
 
+function EndedReferralStatus({ patient }: { patient: Patient }) {
+  return (
+    <div className="space-y-1">
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200">
+        <XCircle className="h-3.5 w-3.5" />
+        Referral ended
+      </span>
+      {patient.endReferral?.reasonLabel && (
+        <p className="max-w-[220px] truncate text-xs text-red-700/80">
+          {patient.endReferral.reasonLabel}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SlaBadge({ days }: { days: number }) {
   return (
     <span
@@ -573,6 +613,15 @@ function SlaBadge({ days }: { days: number }) {
     >
       <Clock className="h-3 w-3" />
       {days}d
+    </span>
+  );
+}
+
+function EndedAtBadge({ endedAt }: { endedAt: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium tabular-nums text-red-700 ring-1 ring-inset ring-red-200">
+      <Clock className="h-3 w-3" />
+      Ended {relativeTime(endedAt)}
     </span>
   );
 }
@@ -736,15 +785,24 @@ function MobileCaseList({ patients }: { patients: Patient[] }) {
           href={`/staff/${p.id}`}
           className={clsx(
             'block rounded-2xl border bg-white p-4 shadow-sm transition hover:border-[#3399e6]',
-            p.isStuck ? 'border-red-200 bg-red-50/40' : 'border-slate-200'
+            p.endReferral ? 'border-red-200 bg-red-50/40' : p.isStuck ? 'border-red-200 bg-red-50/40' : 'border-slate-200'
           )}
         >
           <PatientIdentity patient={p} />
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <SourceCell patient={p} />
-              <StatusPill stage={p.stage} />
-              <SlaBadge days={p.daysInStage} />
+              {p.endReferral ? (
+                <>
+                  <EndedReferralStatus patient={p} />
+                  <EndedAtBadge endedAt={p.endReferral.endedAt} />
+                </>
+              ) : (
+                <>
+                  <StatusPill stage={p.stage} />
+                  <SlaBadge days={p.daysInStage} />
+                </>
+              )}
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">

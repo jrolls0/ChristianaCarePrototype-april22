@@ -612,14 +612,14 @@ function PatientHeader({ patient }: { patient: Patient }) {
                   {patient.firstName} {patient.lastName}
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill stage={patient.stage} />
                   {patient.endReferral ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 ring-1 ring-red-200">
                       <XCircle className="h-3.5 w-3.5" />
                       Referral ended
                     </span>
                   ) : (
                     <>
+                      <StatusPill stage={patient.stage} />
                       {patient.stage === 'initial-screening' && <ScreeningReviewBadge />}
                       {patient.stage !== 'initial-screening' && patient.isStuck && (
                         <StuckBadge days={patient.daysInStage} />
@@ -629,12 +629,20 @@ function PatientHeader({ patient }: { patient: Patient }) {
                 </div>
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                {referralLabel} · {referralTimingLabel} {relativeTime(patient.referralDate)} · {patient.daysInStage} days in stage
+                {referralLabel} · {referralTimingLabel} {relativeTime(patient.referralDate)} ·{' '}
+                {patient.endReferral
+                  ? `Ended ${relativeTime(patient.endReferral.endedAt)}`
+                  : `${patient.daysInStage} days in stage`}
               </p>
+              {patient.endReferral && (
+                <p className="mt-2 text-sm font-medium text-red-700">
+                  Referral ended: {patient.endReferral.reasonLabel}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {missingClinicInfo && (
+            {missingClinicInfo && !patient.endReferral && (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Needs action
@@ -1021,7 +1029,7 @@ function SummaryTab({
         </h3>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
           {patient.endReferral
-            ? 'This referral has been ended in the staff cockpit. Patient-facing behavior will be decided later.'
+            ? 'This referral has been ended. The approved letter is visible in the patient portal.'
             : patient.isStuck
               ? 'This case is flagged because it has remained in the current stage longer than expected.'
               : 'Use the tabs below to review the current case work and move the referral forward.'}
