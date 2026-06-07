@@ -122,7 +122,7 @@ export default function LandingPage() {
           <div className="flex flex-wrap items-center justify-center gap-2">
             <FeedbackButton
               portal="Demo Home"
-              className="gap-2 px-4 py-2 text-sm shadow-sm"
+              className="!h-10 !gap-2 !border-slate-300 !px-4 !py-2 !text-sm !font-medium !text-slate-700 !shadow-sm"
             />
             <button
               onClick={handleReset}
