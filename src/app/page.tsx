@@ -120,7 +120,10 @@ export default function LandingPage() {
 
         <footer className="mt-12 flex flex-col items-center gap-3 text-center">
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <FeedbackButton portal="Demo Home" />
+            <FeedbackButton
+              portal="Demo Home"
+              className="gap-2 px-4 py-2 text-sm shadow-sm"
+            />
             <button
               onClick={handleReset}
               className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
