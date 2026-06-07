@@ -10,6 +10,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { FeedbackButton } from '@/components/feedback/FeedbackButton';
 import { useInboxUnread } from '@/lib/inbox';
 import { useStore } from '@/lib/store';
 
@@ -89,6 +90,7 @@ export function StaffShell({ children }: StaffShellProps) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <FeedbackButton portal="Transplant Center Portal" />
                 <button
                   type="button"
                   onClick={resetDemo}

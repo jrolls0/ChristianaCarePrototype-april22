@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronLeft, Inbox, LayoutList, RotateCcw, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
+import { FeedbackButton } from '@/components/feedback/FeedbackButton';
 import { useClinicInboxUnread } from '@/lib/clinicInbox';
 import { useStore } from '@/lib/store';
 
@@ -84,6 +85,7 @@ export function ClinicShell({ children }: ClinicShellProps) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <FeedbackButton portal="Dialysis Clinic Portal" />
                 <button
                   type="button"
                   onClick={resetDemo}

@@ -73,6 +73,7 @@ import {
   selectedInitialEvaluationSlot,
 } from '../../lib/initialEvaluationScheduling';
 import { AttachButton, AttachmentChips } from '../../components/ui/AttachmentRow';
+import { FeedbackButton } from '../../components/feedback/FeedbackButton';
 
 type OnboardingStep =
   | 'entry'
@@ -997,13 +998,16 @@ export default function MobilePrototypePage() {
 
   return (
     <div className="relative min-h-[100dvh] bg-[#f0f5fb] sm:p-6">
-      <Link
-        href="/"
-        className="absolute right-4 top-4 z-20 hidden items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:right-6 sm:top-6 sm:inline-flex"
-      >
-        <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-        Demo home
-      </Link>
+      <div className="absolute right-4 top-4 z-20 hidden items-center gap-2 sm:right-6 sm:top-6 sm:flex">
+        <FeedbackButton activeTab={activeTab} portal="Patient Portal" />
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          Demo home
+        </Link>
+      </div>
       <div className="mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden bg-[#f4f7fb] sm:h-[880px] sm:rounded-[34px] sm:shadow-[0_28px_60px_rgba(15,23,42,0.24)]">
         {!hasHydrated ? (
           <div className="flex-1" aria-hidden />
