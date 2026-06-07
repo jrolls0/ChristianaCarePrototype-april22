@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { AlertCircle, CheckCircle2, MessageSquareText, Send, X } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -170,25 +171,10 @@ export function FeedbackButton({ activeTab, className, portal }: FeedbackButtonP
     }
   }
 
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          setSelectedPortal(portal);
-          setOpen(true);
-        }}
-        className={clsx(
-          'inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900',
-          className
-        )}
-      >
-        <MessageSquareText className="h-3.5 w-3.5" />
-        Submit feedback
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4 py-6 backdrop-blur-sm">
+  const feedbackModal =
+    open && typeof document !== 'undefined'
+      ? createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/45 px-4 py-6 backdrop-blur-sm">
           <div className="flex max-h-full w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
               <div>
@@ -334,8 +320,29 @@ export function FeedbackButton({ activeTab, className, portal }: FeedbackButtonP
               </form>
             )}
           </div>
-        </div>
-      )}
+        </div>,
+        document.body
+      )
+      : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setSelectedPortal(portal);
+          setOpen(true);
+        }}
+        className={clsx(
+          'inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900',
+          className
+        )}
+      >
+        <MessageSquareText className="h-3.5 w-3.5" />
+        Submit feedback
+      </button>
+
+      {feedbackModal}
     </>
   );
 }

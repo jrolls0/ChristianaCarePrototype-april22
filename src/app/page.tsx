@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Building2, Smartphone, Stethoscope } from 'lucide-react';
+import { FeedbackButton } from '@/components/feedback/FeedbackButton';
 import { STORAGE_KEY } from '@/lib/store';
 
 interface Tile {
@@ -118,12 +119,15 @@ export default function LandingPage() {
         </main>
 
         <footer className="mt-12 flex flex-col items-center gap-3 text-center">
-          <button
-            onClick={handleReset}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
-          >
-            Reset demo data
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <FeedbackButton portal="Demo Home" />
+            <button
+              onClick={handleReset}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+            >
+              Reset demo data
+            </button>
+          </div>
           <p className="text-xs text-slate-500">
             Clears local demo state and reloads. Use between run-throughs.
           </p>
