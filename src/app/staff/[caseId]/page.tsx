@@ -1332,13 +1332,11 @@ function TodosTab({
     ['upload-government-id', 'upload-insurance-card', 'complete-health-questionnaire'].includes(todo.type)
   );
   const optionalRows = patient.todos.filter((todo) => todo.type === 'add-emergency-contact');
-  const customRows = patient.todos.filter((todo) =>
-    [
-      'custom',
-      'watch-education-video',
-      'schedule-initial-evaluation',
-      DECEASED_DONOR_PREFERENCES_TODO_TYPE,
-    ].includes(todo.type)
+  const laterStageRows = patient.todos.filter((todo) =>
+    ['watch-education-video', 'schedule-initial-evaluation'].includes(todo.type)
+  );
+  const staffAssignedRows = patient.todos.filter((todo) =>
+    ['custom', DECEASED_DONOR_PREFERENCES_TODO_TYPE].includes(todo.type)
   );
 
   return (
@@ -1378,8 +1376,16 @@ function TodosTab({
         />
         <TodoGroup rows={requiredRows} title="Required Initial To-Dos" />
         <TodoGroup rows={optionalRows} title="Optional Support Contact" />
-        <TodoGroup rows={customRows} title="Staff & Later-Stage Tasks" />
-        <DonorPreferencesResultsSection patient={patient} />
+        <TodoGroup
+          description="Standard tasks that appear later in the referral workflow."
+          rows={laterStageRows}
+          title="Later-Stage Workflow Tasks"
+        />
+        <TodoGroup
+          description="Manually assigned by transplant center staff."
+          rows={staffAssignedRows}
+          title="Staff-Assigned To-Dos"
+        />
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1410,10 +1416,12 @@ function TodosTab({
 }
 
 function TodoGroup({
+  description,
   fallbackRows,
   rows,
   title,
 }: {
+  description?: string;
   fallbackRows?: Todo[];
   rows: Todo[];
   title: string;
@@ -1425,6 +1433,7 @@ function TodoGroup({
       <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
         {title}
       </h4>
+      {description && <p className="mt-1 text-xs text-slate-500">{description}</p>}
       <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-100">
         {displayRows.map((todo) => (
           <TodoRow key={todo.id} todo={todo} />
@@ -2060,6 +2069,8 @@ const DOCUMENT_CATEGORY_EMPTY: Record<DocumentRecord['uploadedBy'], string> = {
   staff: 'No documents attached yet.',
 };
 
+const DONOR_PREFERENCES_DOCUMENT_NAME = 'Deceased Donor Preferences Form';
+
 function displayDocumentName(name: string): string {
   return name
     .replace(/\s+—\s+front/i, ' (Front)')
@@ -2073,6 +2084,7 @@ function documentSortRank(name: string): number {
   if (normalized.includes('insurance card (back)')) return 30;
   if (normalized.includes('services roi')) return 50;
   if (normalized.includes('medical records roi')) return 60;
+  if (normalized.includes('deceased donor preferences')) return 70;
   return 100;
 }
 
@@ -2105,10 +2117,34 @@ function appendVirtualDocument(
   ];
 }
 
+function donorPreferencesDocumentSlug(response: DeceasedDonorPreferencesResponse): string {
+  return `deceased-donor-preferences-${response.id}`;
+}
+
+function donorPreferencesResponseForDocument(
+  document: DocumentRecord,
+  patient: Patient
+): DeceasedDonorPreferencesResponse | undefined {
+  if (!document.id.startsWith(`virtual-${patient.id}-deceased-donor-preferences-`)) {
+    return undefined;
+  }
+  const responseId = document.id.replace(`virtual-${patient.id}-deceased-donor-preferences-`, '');
+  return patient.deceasedDonorPreferencesResponses?.find((response) => response.id === responseId);
+}
+
+function sortedDonorPreferenceResponses(patient: Patient): DeceasedDonorPreferencesResponse[] {
+  return (
+    patient.deceasedDonorPreferencesResponses
+      ?.slice()
+      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()) ?? []
+  );
+}
+
 function documentsForDisplay(patient: Patient): DocumentRecord[] {
   const roiServicesAt = todoCompletedAt(patient, 'sign-roi-services');
   const roiMedicalAt = todoCompletedAt(patient, 'sign-roi-medical');
   const hasBothRois = Boolean(roiServicesAt && roiMedicalAt);
+  const latestDonorPreferences = latestDeceasedDonorPreferences(patient);
   let documents = patient.documents;
 
   if (hasBothRois) {
@@ -2125,6 +2161,16 @@ function documentsForDisplay(patient: Patient): DocumentRecord[] {
       'roi-medical',
       'Medical Records ROI',
       roiMedicalAt
+    );
+  }
+
+  if (latestDonorPreferences) {
+    documents = appendVirtualDocument(
+      documents,
+      patient.id,
+      donorPreferencesDocumentSlug(latestDonorPreferences),
+      DONOR_PREFERENCES_DOCUMENT_NAME,
+      latestDonorPreferences.submittedAt
     );
   }
 
@@ -2382,6 +2428,15 @@ function DocumentViewerModal({
   const title = displayDocumentName(document.name);
   const sourceLabel = DOCUMENT_CATEGORY_LABEL[document.uploadedBy];
   const lines = documentPreviewLines(document, patient);
+  const donorPreferencesResponse = donorPreferencesResponseForDocument(document, patient);
+  const donorPreferenceResponses = sortedDonorPreferenceResponses(patient);
+  const [selectedDonorResponseId, setSelectedDonorResponseId] = useState(
+    donorPreferencesResponse?.id ?? null
+  );
+  const selectedDonorResponse = donorPreferencesResponse
+    ? donorPreferenceResponses.find((response) => response.id === selectedDonorResponseId) ??
+      donorPreferencesResponse
+    : undefined;
 
   return (
     <div
@@ -2413,11 +2468,19 @@ function DocumentViewerModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <pre className="min-h-[320px] whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-700">
-              {lines.join('\n')}
-            </pre>
-          </div>
+          {selectedDonorResponse ? (
+            <DonorPreferencesDocumentPreview
+              onSelectResponse={setSelectedDonorResponseId}
+              response={selectedDonorResponse}
+              responses={donorPreferenceResponses}
+            />
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <pre className="min-h-[320px] whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-700">
+                {lines.join('\n')}
+              </pre>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end border-t border-slate-100 px-5 py-4">
@@ -2430,6 +2493,151 @@ function DocumentViewerModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DonorPreferencesDocumentPreview({
+  onSelectResponse,
+  response,
+  responses,
+}: {
+  onSelectResponse: (responseId: string) => void;
+  response: DeceasedDonorPreferencesResponse;
+  responses: DeceasedDonorPreferencesResponse[];
+}) {
+  const declined = declinedDonorPreferenceLabels(response);
+  const previous = responses.filter((candidate) => candidate.id !== response.id);
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-[#dbeeff] bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h4 className="text-sm font-semibold text-slate-900">
+              Deceased Donor Preferences
+            </h4>
+            <p className="mt-1 text-xs text-slate-500">
+              Submitted {formatDateTime(response.submittedAt)}
+            </p>
+          </div>
+          <span className="inline-flex w-fit rounded-full bg-[#eef6ff] px-3 py-1 text-xs font-semibold text-[#1a66cc] ring-1 ring-[#dbeeff]">
+            Structured patient form
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl bg-[#f8fbff] p-3 ring-1 ring-[#dbeeff]">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Maximum donor age
+            </p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">
+              {donorAgePreferenceLabel(response)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-[#f8fbff] p-3 ring-1 ring-[#dbeeff]">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Patient signature
+            </p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">
+              {response.patientSignature}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Donor types declined
+          </p>
+          {declined.length === 0 ? (
+            <div className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-100">
+              No restrictions
+            </div>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {declined.map((label) => (
+                <li
+                  key={label}
+                  className="rounded-xl bg-white px-3 py-2 text-sm font-medium leading-relaxed text-slate-700 ring-1 ring-[#dbeeff]"
+                >
+                  {label}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+          <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-700">
+            Full responses
+          </h4>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[620px] text-left text-sm">
+            <thead className="bg-white text-xs uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Donor type</th>
+                <th className="w-28 px-4 py-3 font-semibold">Answer</th>
+                <th className="w-40 px-4 py-3 font-semibold">Submitted</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {DONOR_PREFERENCE_FIELDS.map((field) => {
+                const answer = response.donorTypePreferences[field.key];
+                return (
+                  <tr key={field.key}>
+                    <td className="px-4 py-3 leading-relaxed text-slate-700">{field.label}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={clsx(
+                          'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+                          answer === 'yes'
+                            ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                            : 'bg-red-50 text-red-700 ring-1 ring-red-100'
+                        )}
+                      >
+                        {answer === 'yes' ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {formatDate(response.submittedAt)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {previous.length > 0 && (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Other submissions
+          </p>
+          <div className="mt-2 space-y-2">
+            {previous.map((previousResponse) => (
+              <div
+                key={previousResponse.id}
+                className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100"
+              >
+                <span className="text-sm font-medium text-slate-700">
+                  {formatDateTime(previousResponse.submittedAt)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onSelectResponse(previousResponse.id)}
+                  className="text-xs font-semibold text-[#1a66cc]"
+                >
+                  View
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

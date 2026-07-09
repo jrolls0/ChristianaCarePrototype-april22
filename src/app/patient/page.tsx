@@ -3240,18 +3240,22 @@ function DeceasedDonorPreferencesTaskCard({
       <button
         type="button"
         onClick={() => setConfirmed((previous) => !previous)}
-        className={`flex w-full items-start gap-2 rounded-xl border px-3 py-2.5 text-left ${
-          showValidation && !confirmed ? 'border-red-400 bg-red-50/30' : 'border-[#d8e4f1] bg-[#f8fbff]'
+        className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left shadow-sm transition ${
+          showValidation && !confirmed
+            ? 'border-red-400 bg-red-50/30'
+            : confirmed
+              ? 'border-[#3399e6] bg-[#e5f3ff] ring-1 ring-[#b7ddfb]'
+              : 'border-[#b7ddfb] bg-[#eef6ff]'
         }`}
       >
         <span
-          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
             confirmed ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'
           }`}
         >
-          {confirmed && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+          {confirmed && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3.5} />}
         </span>
-        <span className="text-xs leading-relaxed text-slate-600">
+        <span className="text-sm font-semibold leading-relaxed text-[#174f8f]">
           I confirm these selections reflect my current wishes.
           <span className="ml-0.5 text-red-500">*</span>
         </span>
