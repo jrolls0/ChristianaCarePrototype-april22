@@ -21,6 +21,11 @@ import {
   isValidFutureSlot,
   schedulingTodoId,
 } from './initialEvaluationScheduling';
+import {
+  DECEASED_DONOR_PREFERENCES_DESCRIPTION,
+  DECEASED_DONOR_PREFERENCES_TITLE,
+  DECEASED_DONOR_PREFERENCES_TODO_TYPE,
+} from './deceasedDonorPreferences';
 
 export const STORAGE_KEY = 'transplant-prototype-state-v1';
 
@@ -719,6 +724,40 @@ export const useStore = create<DemoState>()(
         });
       },
 
+      addDeceasedDonorPreferencesTodo: (patientId) => {
+        const now = new Date().toISOString();
+        const staffName = get().currentStaffName;
+        const todo: Todo = {
+          id: `todo-${patientId}-deceased-donor-preferences-${nextIdSuffix()}`,
+          type: DECEASED_DONOR_PREFERENCES_TODO_TYPE,
+          title: DECEASED_DONOR_PREFERENCES_TITLE,
+          description: DECEASED_DONOR_PREFERENCES_DESCRIPTION,
+          status: 'pending',
+          isCustom: true,
+          addedByStaff: staffName,
+          addedAt: now,
+        };
+        set({
+          patients: get().patients.map((p) => {
+            if (p.id !== patientId) return p;
+            if (
+              p.todos.some(
+                (candidate) =>
+                  candidate.type === DECEASED_DONOR_PREFERENCES_TODO_TYPE &&
+                  candidate.status === 'pending'
+              )
+            ) {
+              return p;
+            }
+            return {
+              ...p,
+              todos: [...p.todos, todo],
+              lastActivityAt: now,
+            };
+          }),
+        });
+      },
+
       ensureInitialTodos: (patientId) => {
         set({
           patients: get().patients.map((p) => {
@@ -946,6 +985,34 @@ export const useStore = create<DemoState>()(
                   ...p,
                   screeningResponses: responses,
                   lastActivityAt: responses.completedAt || now,
+                }
+          ),
+        });
+      },
+
+      saveDeceasedDonorPreferences: (patientId, todoId, response) => {
+        const now = new Date().toISOString();
+        set({
+          patients: get().patients.map((p) =>
+            p.id !== patientId
+              ? p
+              : {
+                  ...p,
+                  deceasedDonorPreferencesResponses: [
+                    ...(p.deceasedDonorPreferencesResponses ?? []),
+                    {
+                      ...response,
+                      id: `donor-pref-${patientId}-${nextIdSuffix()}`,
+                      todoId,
+                      submittedAt: now,
+                    },
+                  ],
+                  todos: p.todos.map((todo) =>
+                    todo.id === todoId
+                      ? { ...todo, status: 'completed', completedAt: now }
+                      : todo
+                  ),
+                  lastActivityAt: now,
                 }
           ),
         });

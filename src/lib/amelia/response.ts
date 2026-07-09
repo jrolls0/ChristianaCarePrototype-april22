@@ -59,6 +59,7 @@ function todoTarget(type: Todo['type']): AmeliaActionTarget {
   if (type === 'add-emergency-contact') return 'todo:emergency-contact';
   if (type === 'watch-education-video') return 'todo:education';
   if (type === 'schedule-initial-evaluation') return 'todo:schedule-initial-evaluation';
+  if (type === 'deceased-donor-preferences') return 'todo:deceased-donor-preferences';
   return 'todo:custom';
 }
 
@@ -117,13 +118,17 @@ function actionForTodo(todo: AmeliaPatientContext['todos'][number], label?: stri
     'add-emergency-contact': 'Open Emergency Contact To-Do',
     'watch-education-video': 'Open Education To-Do',
     'schedule-initial-evaluation': 'Open Schedule Initial Evaluation',
+    'deceased-donor-preferences': 'Open Donor Preferences Form',
   };
   return {
     id: actionId('todo'),
     kind: 'navigation',
     label: label ?? defaultLabels[todo.type] ?? `Open ${todo.title}`,
     target: todoTarget(todo.type),
-    params: todo.type === 'custom' ? { todoId: todo.id } : undefined,
+    params:
+      todo.type === 'custom' || todo.type === 'deceased-donor-preferences'
+        ? { todoId: todo.id }
+        : undefined,
   };
 }
 
@@ -286,6 +291,25 @@ function explicitTodoAction(query: string, context: AmeliaPatientContext): Ameli
     /\btodo\b/,
     /\bto do\b/,
   ]);
+
+  if (
+    hasAny(normalized, [
+      /\bdonor preference/,
+      /\bdonor type/,
+      /\bdeceased donor/,
+      /\bkdpi\b/,
+      /\bhcv\b/,
+      /\bhbv\b/,
+      /\bhepatitis\b/,
+      /\bdual transplant\b/,
+      /\bmaximum donor age\b/,
+      /\bmax donor age\b/,
+      /\bdonor age\b/,
+    ])
+  ) {
+    const todo = pendingTodoOfType(context, 'deceased-donor-preferences');
+    return todo ? actionForTodo(todo, 'Open Donor Preferences Form') : null;
+  }
 
   if (
     hasAny(normalized, [
@@ -574,6 +598,35 @@ function documentsSummary(context: AmeliaPatientContext): string {
     .join('\n');
 }
 
+function hasDonorPreferenceIntent(query: string): boolean {
+  const normalized = normalizeText(query);
+  return hasAny(normalized, [
+    /\bdonor preference/,
+    /\bdonor type/,
+    /\bdeceased donor/,
+    /\bkdpi\b/,
+    /\bhcv\b/,
+    /\bhbv\b/,
+    /\bhepatitis\b/,
+    /\bdual transplant\b/,
+    /\bmaximum donor age\b/,
+    /\bmax donor age\b/,
+    /\bdonor age\b/,
+  ]);
+}
+
+function donorPreferenceSummary(context: AmeliaPatientContext): string {
+  const pending = pendingTodoOfType(context, 'deceased-donor-preferences');
+  const taskLine = pending
+    ? 'I see a donor preferences form in your To-Do List. You can open it to review the education text and save your current choices.'
+    : 'I do not see a pending donor preferences form right now. If you want to update your choices, message the transplant center and ask them to assign it again.';
+  return [
+    'Donor type preferences help your care team understand which deceased donor kidney offers you would feel comfortable considering. These choices are used to avoid calling you about offer types you are not interested in right now.',
+    'Your choices are not permanent, and choosing Yes does not mean you must accept an offer later. I can explain what the form is for, but I cannot recommend which donor types or age limit you should choose.',
+    taskLine,
+  ].join('\n\n');
+}
+
 function careTeamSummary(context: AmeliaPatientContext): string {
   const primary = context.careTeam.slice(0, 4).map((member) => {
     const helps = member.helpsWith.slice(0, 2).join(' and ');
@@ -610,6 +663,12 @@ function nextStepResponse(context: AmeliaPatientContext): string {
 function safetyResponse(query: string): string | null {
   if (/\b(chest pain|trouble breathing|can't breathe|stroke|severe pain|emergency|suicidal)\b/i.test(query)) {
     return 'If this might be an emergency, call 911 or seek urgent medical care now. I can help draft a non-urgent message to your care team, but I should not be used for urgent symptoms.';
+  }
+  if (
+    /\b(should i|which|what should|recommend|best)\b/i.test(query) &&
+    /\b(donor|kdpi|hcv|hbv|hepatitis|dual transplant|maximum age|max age)\b/i.test(query)
+  ) {
+    return 'I cannot recommend which donor types or donor age limit you should choose. I can explain what the donor preferences form is for, and you can message the transplant center if you want clinical guidance.';
   }
   if (/\b(am i eligible|will i be approved|diagnose|what does my result mean|contraindication)\b/i.test(query)) {
     return 'I cannot decide eligibility, diagnose, or interpret clinical results. I can help you write a clear message to ChristianaCare so the care team can answer that safely.';
@@ -687,6 +746,8 @@ export function generateLocalAmeliaResponse(payload: AmeliaRequestPayload): Amel
     content = messageSummary(context);
   } else if (/\b(document|documents|upload|uploaded|id|insurance card|roi)\b/i.test(query)) {
     content = documentsSummary(context);
+  } else if (hasDonorPreferenceIntent(query)) {
+    content = donorPreferenceSummary(context);
   } else if (/\b(who|care team|coordinator|social worker|nephrologist|financial)\b/i.test(query)) {
     content = careTeamSummary(context);
   } else if (/\b(next|now|done|status|waiting|stage|todo|to-do|task)\b/i.test(query)) {
@@ -752,6 +813,7 @@ export function buildAmeliaSystemPrompt(
     'Answer warmly and practically in plain language. Keep answers concise: usually 2-4 short paragraphs or bullets.',
     'Use only the provided current-patient context. Never discuss other patients.',
     'You may explain next steps, to-dos, documents, messages, app navigation, care team roles, and general transplant process information.',
+    'You may explain donor preference form purpose and terms at a high level, but never recommend which donor types, infections, KDPI, dual transplant, or age limits the patient should choose.',
     'Do not give medical advice, diagnose, interpret clinical answers, predict transplant eligibility, confirm insurance coverage, or make scheduling promises.',
     'Do not say you completed tasks, uploaded documents, changed profile data, signed forms, or sent messages. The patient must take all actions.',
     'If the patient asks to message someone, draft only the message body and tell them to review and send it from the correct message thread.',

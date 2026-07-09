@@ -54,6 +54,8 @@ import type {
   AmeliaActionTarget,
   AmeliaChatMessage,
   AmeliaConversation,
+  DeceasedDonorPreferencesResponse,
+  DonorPreferenceAnswer,
   DocumentRequest as StoreDocumentRequest,
   EmergencyContact as StoreEmergencyContact,
   InitialEvaluationSlot as StoreInitialEvaluationSlot,
@@ -72,6 +74,12 @@ import {
   formatSlotRange,
   selectedInitialEvaluationSlot,
 } from '../../lib/initialEvaluationScheduling';
+import {
+  DECEASED_DONOR_PREFERENCES_INTRO,
+  DONOR_PREFERENCE_FIELDS,
+  MAX_DONOR_AGE_EDUCATION,
+  type DonorPreferenceKey,
+} from '../../lib/deceasedDonorPreferences';
 import { AttachButton, AttachmentChips } from '../../components/ui/AttachmentRow';
 import { FeedbackButton } from '../../components/feedback/FeedbackButton';
 
@@ -108,6 +116,7 @@ type TodoIntent = {
     | 'todo:emergency-contact'
     | 'todo:education'
     | 'todo:schedule-initial-evaluation'
+    | 'todo:deceased-donor-preferences'
     | 'todo:custom'
   >;
   todoId?: string;
@@ -127,6 +136,7 @@ type MockTodo = {
     | 'carePartnerInvite'
     | 'educationVideo'
     | 'scheduleInitialEvaluation'
+    | 'deceasedDonorPreferences'
     | 'customStaffTodo';
   addedByStaff?: string;
   documentRequests?: StoreDocumentRequest[];
@@ -265,6 +275,7 @@ const HOME_VISIBLE_STORE_TYPES: ReadonlySet<StoreTodo['type']> = new Set([
   'add-emergency-contact',
   'watch-education-video',
   'schedule-initial-evaluation',
+  'deceased-donor-preferences',
   'custom',
 ]);
 
@@ -282,6 +293,8 @@ function mapStoreTodoToUi(todo: StoreTodo): MockTodo {
               ? 'educationVideo'
               : todo.type === 'schedule-initial-evaluation'
                 ? 'scheduleInitialEvaluation'
+                : todo.type === 'deceased-donor-preferences'
+                  ? 'deceasedDonorPreferences'
                 : 'customStaffTodo';
   const priority: MockTodo['priority'] =
     todo.type === 'upload-government-id'
@@ -294,9 +307,11 @@ function mapStoreTodoToUi(todo: StoreTodo): MockTodo {
             ? 'low'
             : todo.type === 'schedule-initial-evaluation'
               ? 'medium'
-            : todo.type === 'custom'
-              ? 'medium'
-              : 'low';
+              : todo.type === 'deceased-donor-preferences'
+                ? 'medium'
+                : todo.type === 'custom'
+                  ? 'medium'
+                  : 'low';
   return {
     id: todo.id,
     title: todo.title,
@@ -650,6 +665,7 @@ export default function MobilePrototypePage() {
   const saveAmeliaConversationAction = useStore((s) => s.saveAmeliaConversation);
   const resetAmeliaConversationAction = useStore((s) => s.resetAmeliaConversation);
   const saveScreeningResponsesAction = useStore((s) => s.saveScreeningResponses);
+  const saveDeceasedDonorPreferencesAction = useStore((s) => s.saveDeceasedDonorPreferences);
   const selectInitialEvaluationSlotAction = useStore((s) => s.selectInitialEvaluationSlot);
   const ameliaConversation = useStore((s) =>
     currentPatientId ? s.ameliaConversations[currentPatientId] : undefined
@@ -906,6 +922,14 @@ export default function MobilePrototypePage() {
     completeTodoAction(patientId, todoId);
   }
 
+  function handleDeceasedDonorPreferencesComplete(
+    todoId: string,
+    response: Omit<DeceasedDonorPreferencesResponse, 'id' | 'todoId' | 'submittedAt'>
+  ) {
+    if (!patientId) return;
+    saveDeceasedDonorPreferencesAction(patientId, todoId, response);
+  }
+
   function handleTodoDocumentUpload(documentName: string) {
     if (!patientId) return;
     uploadDocumentAction(patientId, documentName, 'patient');
@@ -1106,6 +1130,7 @@ export default function MobilePrototypePage() {
                   displayName={displayName}
                   endReferralLetterIntentId={endReferralLetterIntentId}
                   onCompleteTodo={handleTodoComplete}
+                  onCompleteDeceasedDonorPreferences={handleDeceasedDonorPreferencesComplete}
                   onDocumentUpload={handleTodoDocumentUpload}
                   onOpenMessages={() => {
                     setActiveTab('messages');
@@ -2467,6 +2492,7 @@ function findTodoForAmeliaTarget(
     'todo:emergency-contact': 'carePartnerInvite',
     'todo:education': 'educationVideo',
     'todo:schedule-initial-evaluation': 'scheduleInitialEvaluation',
+    'todo:deceased-donor-preferences': 'deceasedDonorPreferences',
   };
   const todoType = targetToType[todoIntent.target];
   return todoType ? pendingTodos.find((todo) => todo.type === todoType) : undefined;
@@ -2480,6 +2506,10 @@ type HomeTabProps = {
     todoId: string,
     screeningResponses?: ScreeningResponses,
     emergencyContact?: CarePartnerInvitePayload
+  ) => void;
+  onCompleteDeceasedDonorPreferences: (
+    todoId: string,
+    response: Omit<DeceasedDonorPreferencesResponse, 'id' | 'todoId' | 'submittedAt'>
   ) => void;
   onDocumentUpload: (documentName: string) => void;
   onOpenMessages: () => void;
@@ -2495,6 +2525,7 @@ function HomeTab({
   displayName,
   endReferralLetterIntentId,
   onCompleteTodo,
+  onCompleteDeceasedDonorPreferences,
   onDocumentUpload,
   onOpenMessages,
   onOpenUnreadMessage,
@@ -2580,6 +2611,10 @@ function HomeTab({
             onCompleteTodo(activeTodo.id, screeningResponses, emergencyContact);
             setActiveTodoId(null);
           }}
+          onCompleteDeceasedDonorPreferences={(response) => {
+            onCompleteDeceasedDonorPreferences(activeTodo.id, response);
+            setActiveTodoId(null);
+          }}
           onDocumentUpload={onDocumentUpload}
           onSelectInitialEvaluationSlot={(slotId) => {
             const slot =
@@ -2590,6 +2625,7 @@ function HomeTab({
             onSelectInitialEvaluationSlot(slotId);
             setActiveTodoId(null);
           }}
+          patient={patient}
           scheduling={patient?.initialEvaluationScheduling}
           todo={activeTodo}
         />
@@ -2915,8 +2951,10 @@ function TodoTaskWorkspace({
   documents,
   onClose,
   onComplete,
+  onCompleteDeceasedDonorPreferences,
   onDocumentUpload,
   onSelectInitialEvaluationSlot,
+  patient,
   scheduling,
   todo,
 }: {
@@ -2926,8 +2964,12 @@ function TodoTaskWorkspace({
     screeningResponses?: ScreeningResponses,
     emergencyContact?: CarePartnerInvitePayload
   ) => void;
+  onCompleteDeceasedDonorPreferences: (
+    response: Omit<DeceasedDonorPreferencesResponse, 'id' | 'todoId' | 'submittedAt'>
+  ) => void;
   onDocumentUpload: (documentName: string) => void;
   onSelectInitialEvaluationSlot: (slotId: string) => void;
+  patient: StorePatient | null;
   scheduling?: StorePatient['initialEvaluationScheduling'];
   todo: MockTodo;
 }) {
@@ -2966,6 +3008,15 @@ function TodoTaskWorkspace({
       />
     );
   }
+  if (todo.type === 'deceasedDonorPreferences') {
+    return (
+      <DeceasedDonorPreferencesTaskCard
+        onClose={onClose}
+        onComplete={onCompleteDeceasedDonorPreferences}
+        patient={patient}
+      />
+    );
+  }
   if (todo.type === 'customStaffTodo') {
     return (
       <CustomStaffTaskCard
@@ -2986,6 +3037,283 @@ function hasPatientUploadedDocument(
 ) {
   const lookup = documentName.trim().toLowerCase();
   return documents.some((document) => document.name.trim().toLowerCase() === lookup);
+}
+
+function DeceasedDonorPreferencesTaskCard({
+  onClose,
+  onComplete,
+  patient,
+}: {
+  onClose: () => void;
+  onComplete: (
+    response: Omit<DeceasedDonorPreferencesResponse, 'id' | 'todoId' | 'submittedAt'>
+  ) => void;
+  patient: StorePatient | null;
+}) {
+  const [answers, setAnswers] = useState<Partial<Record<DonorPreferenceKey, DonorPreferenceAnswer>>>({});
+  const [expandedEducation, setExpandedEducation] = useState<Set<string>>(new Set());
+  const [maximumAge, setMaximumAge] = useState('');
+  const [noLimit, setNoLimit] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [signature, setSignature] = useState('');
+  const [showValidation, setShowValidation] = useState(false);
+  const currentDate = useMemo(() => new Date(), []);
+  const patientName = patient ? `${patient.firstName} ${patient.lastName}`.trim() : 'Not provided';
+  const patientDob = patient?.dob ? formatPatientPortalDate(patient.dob) : 'Not provided';
+  const allQuestionsAnswered = DONOR_PREFERENCE_FIELDS.every((field) => answers[field.key]);
+  const parsedAge = Number(maximumAge);
+  const ageValid =
+    noLimit ||
+    (maximumAge.trim().length > 0 &&
+      /^\d+$/.test(maximumAge.trim()) &&
+      Number.isFinite(parsedAge) &&
+      parsedAge > 0);
+  const canSubmit =
+    allQuestionsAnswered && ageValid && confirmed && signature.trim().length > 0;
+
+  function toggleEducation(key: string) {
+    setExpandedEducation((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  function selectAnswer(key: DonorPreferenceKey, answer: DonorPreferenceAnswer) {
+    setAnswers((previous) => ({ ...previous, [key]: answer }));
+  }
+
+  function handleNoLimitChange(nextChecked: boolean) {
+    setNoLimit(nextChecked);
+    if (nextChecked) setMaximumAge('');
+  }
+
+  function handleSubmit() {
+    setShowValidation(true);
+    if (!canSubmit) return;
+    const donorTypePreferences = Object.fromEntries(
+      DONOR_PREFERENCE_FIELDS.map((field) => [field.key, answers[field.key] as DonorPreferenceAnswer])
+    ) as DeceasedDonorPreferencesResponse['donorTypePreferences'];
+    onComplete({
+      patientName,
+      patientDob: patient?.dob ?? '',
+      donorTypePreferences,
+      maximumDonorAge: noLimit ? undefined : parsedAge,
+      noMaximumAgeLimit: noLimit,
+      confirmedCurrentWishes: true,
+      patientSignature: signature.trim(),
+    });
+  }
+
+  const baseInputClass =
+    'h-11 w-full rounded-xl border border-[#d8e4f1] bg-white px-3 text-sm text-slate-900 outline-none ring-offset-2 transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff] disabled:bg-slate-100 disabled:text-slate-400';
+
+  return (
+    <TodoWorkspaceShell
+      onClose={onClose}
+      title="Deceased Donor Type Preferences"
+      subtitle="Save your current choices about donor types you would consider."
+    >
+      <div className="grid gap-2 rounded-xl border border-[#d8e4f1] bg-[#f8fbff] p-3 text-sm">
+        <ReadonlyFormRow label="Patient Name" value={patientName || 'Not provided'} />
+        <ReadonlyFormRow label="Patient DOB" value={patientDob} />
+        <ReadonlyFormRow
+          label="Current Date"
+          value={currentDate.toLocaleDateString('en-US', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        />
+      </div>
+
+      <div className="whitespace-pre-wrap rounded-xl border border-[#c7dff5] bg-[#edf5ff] p-3 text-xs leading-relaxed text-[#1f5f9f]">
+        {DECEASED_DONOR_PREFERENCES_INTRO}
+      </div>
+
+      <div className="space-y-3">
+        {DONOR_PREFERENCE_FIELDS.map((field, index) => {
+          const hasError = showValidation && !answers[field.key];
+          const educationOpen = expandedEducation.has(field.key);
+          return (
+            <div
+              key={field.key}
+              className={`rounded-xl border p-3 ${
+                hasError ? 'border-red-400 bg-red-50/30' : 'border-[#d8e4f1] bg-white'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-semibold leading-relaxed text-slate-900">
+                  {index + 1}. {field.label}
+                  <span className="ml-0.5 text-red-500">*</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => toggleEducation(field.key)}
+                  className="shrink-0 rounded-full bg-[#eef6ff] px-2.5 py-1 text-[11px] font-semibold text-[#1a66cc]"
+                >
+                  {educationOpen ? 'Hide' : 'Learn more'}
+                </button>
+              </div>
+
+              {educationOpen && (
+                <p className="mt-3 rounded-xl border border-[#d7e8f8] bg-[#f8fbff] p-3 text-xs leading-relaxed text-slate-600">
+                  {field.education}
+                </p>
+              )}
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {(['yes', 'no'] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => selectAnswer(field.key, option)}
+                    className={`h-10 rounded-xl border text-sm font-semibold transition ${
+                      answers[field.key] === option
+                        ? 'border-[#3399e6] bg-[#eef6ff] text-[#1a66cc] ring-2 ring-[#dbeeff]'
+                        : 'border-[#d8e4f1] bg-white text-slate-600 hover:bg-[#f8fbff]'
+                    }`}
+                  >
+                    {option === 'yes' ? 'Yes' : 'No'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        className={`rounded-xl border p-3 ${
+          showValidation && !ageValid ? 'border-red-400 bg-red-50/30' : 'border-[#d8e4f1] bg-white'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm font-semibold leading-relaxed text-slate-900">
+            What is the maximum donor age you would be comfortable considering?
+            <span className="ml-0.5 text-red-500">*</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => toggleEducation('maximum-donor-age')}
+            className="shrink-0 rounded-full bg-[#eef6ff] px-2.5 py-1 text-[11px] font-semibold text-[#1a66cc]"
+          >
+            {expandedEducation.has('maximum-donor-age') ? 'Hide' : 'Learn more'}
+          </button>
+        </div>
+        {expandedEducation.has('maximum-donor-age') && (
+          <p className="mt-3 rounded-xl border border-[#d7e8f8] bg-[#f8fbff] p-3 text-xs leading-relaxed text-slate-600">
+            {MAX_DONOR_AGE_EDUCATION}
+          </p>
+        )}
+        <div className="mt-3 grid gap-3">
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Age</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={maximumAge}
+              disabled={noLimit}
+              onChange={(event) => setMaximumAge(event.target.value)}
+              placeholder="Enter maximum age"
+              className={baseInputClass}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => handleNoLimitChange(!noLimit)}
+            className="flex w-full items-start gap-2 rounded-xl border border-[#d8e4f1] bg-[#f8fbff] px-3 py-2.5 text-left"
+          >
+            <span
+              className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                noLimit ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'
+              }`}
+            >
+              {noLimit && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+            </span>
+            <span className="text-xs font-semibold text-slate-700">No limit</span>
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setConfirmed((previous) => !previous)}
+        className={`flex w-full items-start gap-2 rounded-xl border px-3 py-2.5 text-left ${
+          showValidation && !confirmed ? 'border-red-400 bg-red-50/30' : 'border-[#d8e4f1] bg-[#f8fbff]'
+        }`}
+      >
+        <span
+          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+            confirmed ? 'border-[#3399e6] bg-[#3399e6]' : 'border-slate-300 bg-white'
+          }`}
+        >
+          {confirmed && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+        </span>
+        <span className="text-xs leading-relaxed text-slate-600">
+          I confirm these selections reflect my current wishes.
+          <span className="ml-0.5 text-red-500">*</span>
+        </span>
+      </button>
+
+      <label className="block space-y-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Patient signature <span className="text-red-500">*</span>
+        </span>
+        <input
+          value={signature}
+          onChange={(event) => setSignature(event.target.value)}
+          placeholder="Type your name"
+          className={`${baseInputClass} ${
+            showValidation && signature.trim().length === 0 ? 'border-red-400 ring-1 ring-red-100' : ''
+          }`}
+        />
+      </label>
+
+      <ReadonlyFormRow
+        label="Date"
+        value={currentDate.toLocaleDateString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+        })}
+      />
+
+      {showValidation && !canSubmit && (
+        <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700 ring-1 ring-red-100">
+          Please answer every donor type question, complete the age preference, confirm your wishes,
+          and type your signature.
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={handleSubmit}
+        aria-disabled={!canSubmit}
+        className={`inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition ${
+          canSubmit ? 'bg-[#3399e6] shadow-[0_10px_20px_rgba(51,153,230,0.32)]' : 'bg-slate-300'
+        }`}
+      >
+        Save My Preferences
+      </button>
+    </TodoWorkspaceShell>
+  );
+}
+
+function ReadonlyFormRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-sm">
+      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </span>
+      <span className="text-right font-semibold text-slate-900">{value}</span>
+    </div>
+  );
 }
 
 function CustomStaffTaskCard({

@@ -71,6 +71,7 @@ const HOME_VISIBLE_TYPES: ReadonlySet<Todo['type']> = new Set([
   'add-emergency-contact',
   'watch-education-video',
   'schedule-initial-evaluation',
+  'deceased-donor-preferences',
   'custom',
 ]);
 

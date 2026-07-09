@@ -19,6 +19,7 @@ export type TodoType =
   | 'complete-health-questionnaire'
   | 'watch-education-video'
   | 'schedule-initial-evaluation'
+  | 'deceased-donor-preferences'
   | 'custom';
 
 export type TodoStatus = 'pending' | 'completed';
@@ -122,6 +123,32 @@ export interface ScreeningResponses {
   completedAt: string;
 }
 
+export type DonorPreferenceAnswer = 'yes' | 'no';
+
+export interface DeceasedDonorPreferencesResponse {
+  id: string;
+  todoId: string;
+  submittedAt: string;
+  patientName: string;
+  patientDob: string;
+  donorTypePreferences: {
+    delayedGraftFunction: DonorPreferenceAnswer;
+    temporaryKidneyDysfunction: DonorPreferenceAnswer;
+    kdpi85OrGreater: DonorPreferenceAnswer;
+    pastHcv: DonorPreferenceAnswer;
+    currentHcv: DonorPreferenceAnswer;
+    pastHbv: DonorPreferenceAnswer;
+    currentHbv: DonorPreferenceAnswer;
+    increasedInfectiousDiseaseRisk: DonorPreferenceAnswer;
+    dualTransplant: DonorPreferenceAnswer;
+  };
+  maximumDonorAge?: number;
+  noMaximumAgeLimit: boolean;
+  confirmedCurrentWishes: boolean;
+  // Stored exactly as typed by the patient. No name matching, identity verification, or e-sign validation.
+  patientSignature: string;
+}
+
 export interface EndReferralRecord {
   reasonCode: string;
   reasonLabel: string;
@@ -206,6 +233,7 @@ export interface Patient {
   profileOverrides?: PatientProfileOverrides;
   referralClinicalSnapshot?: ReferralClinicalSnapshot;
   initialEvaluationScheduling?: InitialEvaluationScheduling;
+  deceasedDonorPreferencesResponses?: DeceasedDonorPreferencesResponse[];
 }
 
 export interface ReferralSubmission {
@@ -262,6 +290,7 @@ export type AmeliaActionTarget =
   | 'todo:emergency-contact'
   | 'todo:education'
   | 'todo:schedule-initial-evaluation'
+  | 'todo:deceased-donor-preferences'
   | 'todo:custom'
   | 'message-thread:tc-frontdesk'
   | 'message-thread:dusw';
@@ -356,6 +385,7 @@ export interface DemoState {
     description: string,
     documentRequests?: { title: string; description?: string }[]
   ) => void;
+  addDeceasedDonorPreferencesTodo: (patientId: string) => void;
   addEmergencyContactTodo: (patientId: string) => void;
   addEducationTodo: (patientId: string) => void;
   sendInitialEvaluationSlots: (
@@ -382,6 +412,11 @@ export interface DemoState {
     source: 'patient' | 'clinic' | 'staff'
   ) => void;
   saveScreeningResponses: (patientId: string, responses: ScreeningResponses) => void;
+  saveDeceasedDonorPreferences: (
+    patientId: string,
+    todoId: string,
+    response: Omit<DeceasedDonorPreferencesResponse, 'id' | 'todoId' | 'submittedAt'>
+  ) => void;
   endReferral: (
     patientId: string,
     payload: { reasonCode: string; reasonLabel: string; rationale: string; letterDraft: string }

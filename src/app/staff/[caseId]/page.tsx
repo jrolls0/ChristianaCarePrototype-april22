@@ -62,8 +62,19 @@ import {
   isValidFutureSlot,
   selectedInitialEvaluationSlot,
 } from '@/lib/initialEvaluationScheduling';
+import {
+  DECEASED_DONOR_PREFERENCES_DESCRIPTION,
+  DECEASED_DONOR_PREFERENCES_TITLE,
+  DECEASED_DONOR_PREFERENCES_TODO_TYPE,
+  DONOR_PREFERENCE_FIELDS,
+  declinedDonorPreferenceLabels,
+  donorAgePreferenceLabel,
+  latestDeceasedDonorPreferences,
+  previousDeceasedDonorPreferences,
+} from '@/lib/deceasedDonorPreferences';
 import { useStore } from '@/lib/store';
 import type {
+  DeceasedDonorPreferencesResponse,
   DocumentRecord,
   InitialEvaluationSlot,
   Patient,
@@ -72,10 +83,25 @@ import type {
   Todo,
 } from '@/lib/types';
 
-const TODO_TEMPLATES = [
-  'Upload additional documentation',
-  'Schedule call with social worker',
-  'Confirm preferred appointment times',
+const TODO_TEMPLATES: Array<
+  | {
+      kind: 'deceased-donor-preferences';
+      title: string;
+      description: string;
+    }
+  | {
+      kind: 'custom';
+      title: string;
+    }
+> = [
+  {
+    kind: 'deceased-donor-preferences',
+    title: DECEASED_DONOR_PREFERENCES_TITLE,
+    description: DECEASED_DONOR_PREFERENCES_DESCRIPTION,
+  },
+  { kind: 'custom', title: 'Upload additional documentation' },
+  { kind: 'custom', title: 'Schedule call with social worker' },
+  { kind: 'custom', title: 'Confirm preferred appointment times' },
 ];
 
 type CockpitTab =
@@ -137,6 +163,19 @@ function formatDate(iso?: string): string {
     month: 'numeric',
     day: 'numeric',
     year: 'numeric',
+  });
+}
+
+function formatDateTime(iso?: string): string {
+  if (!iso) return 'Not recorded';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString(undefined, {
+    month: 'numeric',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
   });
 }
 
@@ -270,7 +309,36 @@ function buildActivity(patient: Patient): ActivityEvent[] {
   }
 
   patient.todos
-    .filter((todo) => todo.status === 'completed' && todo.completedAt)
+    .filter((todo) => todo.type === DECEASED_DONOR_PREFERENCES_TODO_TYPE && todo.addedAt)
+    .forEach((todo) => {
+      events.push({
+        id: `donor-prefs-assigned-${todo.id}`,
+        at: todo.addedAt as string,
+        label: 'Deceased donor preferences assigned',
+        detail: todo.addedByStaff ? `Assigned by ${todo.addedByStaff}` : undefined,
+        icon: ClipboardCheck,
+        tone: 'violet',
+      });
+    });
+
+  patient.deceasedDonorPreferencesResponses?.forEach((response) => {
+    events.push({
+      id: `donor-prefs-submitted-${response.id}`,
+      at: response.submittedAt,
+      label: 'Deceased donor preferences submitted',
+      detail: donorAgePreferenceLabel(response),
+      icon: ShieldCheck,
+      tone: 'blue',
+    });
+  });
+
+  patient.todos
+    .filter(
+      (todo) =>
+        todo.status === 'completed' &&
+        todo.completedAt &&
+        todo.type !== DECEASED_DONOR_PREFERENCES_TODO_TYPE
+    )
     .forEach((todo) => {
       events.push({
         id: `todo-${todo.id}`,
@@ -373,6 +441,7 @@ export default function StaffCaseDetailPage() {
     s.patients.find((p) => p.id === caseId) ?? null
   );
   const addCustomTodo = useStore((s) => s.addCustomTodo);
+  const addDeceasedDonorPreferencesTodo = useStore((s) => s.addDeceasedDonorPreferencesTodo);
   const sendMessage = useStore((s) => s.sendMessage);
   const markThreadRead = useStore((s) => s.markThreadRead);
   const advanceStage = useStore((s) => s.advancePatientStage);
@@ -570,8 +639,12 @@ export default function StaffCaseDetailPage() {
       {todoOpen && (
         <AddTodoModal
           onClose={() => setTodoOpen(false)}
-          onSubmit={(title, description, documentRequests) => {
-            addCustomTodo(patient.id, title, description, documentRequests);
+          onSubmit={(payload) => {
+            if (payload.kind === 'deceased-donor-preferences') {
+              addDeceasedDonorPreferencesTodo(patient.id);
+            } else {
+              addCustomTodo(patient.id, payload.title, payload.description, payload.documentRequests);
+            }
             setTodoOpen(false);
           }}
         />
@@ -1036,6 +1109,7 @@ function SummaryTab({
         </p>
 
         <SchedulingSummaryCallout patient={patient} onSwitchTab={onSwitchTab} />
+        <DonorPreferencesSummaryCallout patient={patient} onSwitchTab={onSwitchTab} />
         <ClinicReferralSnapshotSummary patient={patient} />
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -1093,6 +1167,45 @@ function SummaryTab({
         </div>
         <ActivityList activity={activity.slice(0, 6)} />
       </section>
+    </div>
+  );
+}
+
+function DonorPreferencesSummaryCallout({
+  onSwitchTab,
+  patient,
+}: {
+  onSwitchTab: (tab: CockpitTab) => void;
+  patient: Patient;
+}) {
+  const pending = patient.todos.find(
+    (todo) => todo.type === DECEASED_DONOR_PREFERENCES_TODO_TYPE && todo.status === 'pending'
+  );
+  const latest = latestDeceasedDonorPreferences(patient);
+  if (!pending && !latest) return null;
+
+  return (
+    <div className="mt-5 rounded-xl border border-[#dbeeff] bg-[#eef6ff] p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-900">
+            {pending ? 'Donor preferences form assigned' : `Donor preferences updated ${relativeTime(latest?.submittedAt ?? '')}`}
+          </h4>
+          <p className="mt-1 text-sm leading-relaxed text-slate-700">
+            {pending
+              ? `${patient.firstName} has a pending donor type preferences form in the patient portal.`
+              : `Maximum donor age: ${latest ? donorAgePreferenceLabel(latest) : 'Not recorded'}.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onSwitchTab('todos')}
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-[#1a66cc] ring-1 ring-[#dbeeff] transition hover:bg-[#f8fbff]"
+        >
+          <ClipboardCheck className="h-4 w-4" />
+          Review To-Dos
+        </button>
+      </div>
     </div>
   );
 }
@@ -1220,7 +1333,12 @@ function TodosTab({
   );
   const optionalRows = patient.todos.filter((todo) => todo.type === 'add-emergency-contact');
   const customRows = patient.todos.filter((todo) =>
-    ['custom', 'watch-education-video', 'schedule-initial-evaluation'].includes(todo.type)
+    [
+      'custom',
+      'watch-education-video',
+      'schedule-initial-evaluation',
+      DECEASED_DONOR_PREFERENCES_TODO_TYPE,
+    ].includes(todo.type)
   );
 
   return (
@@ -1261,6 +1379,7 @@ function TodosTab({
         <TodoGroup rows={requiredRows} title="Required Initial To-Dos" />
         <TodoGroup rows={optionalRows} title="Optional Support Contact" />
         <TodoGroup rows={customRows} title="Staff & Later-Stage Tasks" />
+        <DonorPreferencesResultsSection patient={patient} />
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1348,6 +1467,222 @@ function TodoRow({ todo }: { todo: Todo }) {
         )}
       </div>
     </li>
+  );
+}
+
+function DonorPreferencesResultsSection({ patient }: { patient: Patient }) {
+  const latest = latestDeceasedDonorPreferences(patient);
+  const previous = previousDeceasedDonorPreferences(patient);
+  const [selectedResponse, setSelectedResponse] =
+    useState<DeceasedDonorPreferencesResponse | null>(null);
+  if (!latest) return null;
+
+  const declined = declinedDonorPreferenceLabels(latest);
+
+  return (
+    <div className="mt-5 rounded-2xl border border-[#dbeeff] bg-[#f8fbff] p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-900">
+            Deceased Donor Preferences
+          </h4>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Submitted {formatDateTime(latest.submittedAt)}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setSelectedResponse(latest)}
+          className="inline-flex w-fit items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-[#1a66cc] ring-1 ring-[#dbeeff] transition hover:bg-[#eef6ff]"
+        >
+          <Eye className="h-4 w-4" />
+          View Details
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl bg-white p-3 ring-1 ring-[#dbeeff]">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Maximum donor age
+          </p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">
+            {donorAgePreferenceLabel(latest)}
+          </p>
+        </div>
+        <div className="rounded-xl bg-white p-3 ring-1 ring-[#dbeeff]">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Patient signature
+          </p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">
+            {latest.patientSignature}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Donor types declined
+        </p>
+        {declined.length === 0 ? (
+          <div className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-100">
+            No restrictions
+          </div>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {declined.map((label) => (
+              <li
+                key={label}
+                className="rounded-xl bg-white px-3 py-2 text-sm font-medium leading-relaxed text-slate-700 ring-1 ring-[#dbeeff]"
+              >
+                {label}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {previous.length > 0 && (
+        <div className="mt-4 border-t border-[#dbeeff] pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Previous submissions
+          </p>
+          <div className="mt-2 space-y-2">
+            {previous.map((response) => (
+              <div
+                key={response.id}
+                className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 ring-1 ring-[#dbeeff]"
+              >
+                <span className="text-sm font-medium text-slate-700">
+                  {formatDateTime(response.submittedAt)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedResponse(response)}
+                  className="text-xs font-semibold text-[#1a66cc]"
+                >
+                  View
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedResponse && (
+        <DonorPreferencesDetailModal
+          response={selectedResponse}
+          onClose={() => setSelectedResponse(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DonorPreferencesDetailModal({
+  onClose,
+  response,
+}: {
+  onClose: () => void;
+  response: DeceasedDonorPreferencesResponse;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 py-6 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">
+              Deceased Donor Preferences
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Submitted {formatDateTime(response.submittedAt)} · Signature: {response.patientSignature}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Maximum donor age
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {donorAgePreferenceLabel(response)}
+              </p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Patient
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {response.patientName} · {formatDob(response.patientDob)}
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <table className="w-full min-w-[620px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Donor type</th>
+                  <th className="w-28 px-4 py-3 font-semibold">Answer</th>
+                  <th className="w-40 px-4 py-3 font-semibold">Submitted</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {DONOR_PREFERENCE_FIELDS.map((field) => {
+                  const answer = response.donorTypePreferences[field.key];
+                  return (
+                    <tr key={field.key}>
+                      <td className="px-4 py-3 leading-relaxed text-slate-700">
+                        {field.label}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={clsx(
+                            'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+                            answer === 'yes'
+                              ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                              : 'bg-red-50 text-red-700 ring-1 ring-red-100'
+                          )}
+                        >
+                          {answer === 'yes' ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">
+                        {formatDate(response.submittedAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="flex justify-end border-t border-slate-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-[#1a66cc] px-4 py-2 text-sm font-semibold text-white"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2834,21 +3169,28 @@ function ActivityList({ activity }: { activity: ActivityEvent[] }) {
 }
 
 type DocRequestDraft = { key: string; title: string; description: string };
+type AddTodoPayload =
+  | { kind: 'deceased-donor-preferences' }
+  | {
+      kind: 'custom';
+      title: string;
+      description: string;
+      documentRequests: { title: string; description?: string }[];
+    };
 
 function AddTodoModal({
   onClose,
   onSubmit,
 }: {
   onClose: () => void;
-  onSubmit: (
-    title: string,
-    description: string,
-    documentRequests: { title: string; description?: string }[]
-  ) => void;
+  onSubmit: (payload: AddTodoPayload) => void;
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [docRequests, setDocRequests] = useState<DocRequestDraft[]>([]);
+  const [selectedTemplateKind, setSelectedTemplateKind] = useState<
+    'custom' | 'deceased-donor-preferences' | null
+  >(null);
 
   function addDocRequest() {
     setDocRequests((prev) => [
@@ -2874,12 +3216,22 @@ function AddTodoModal({
 
   const hasDocRows = docRequests.length > 0;
   const allDocRowsValid = !hasDocRows || docRequests.every((r) => r.title.trim().length > 0);
-  const canSubmit = title.trim().length > 0 && allDocRowsValid;
+  const donorPreferencesSelected = selectedTemplateKind === 'deceased-donor-preferences';
+  const canSubmit = donorPreferencesSelected || (title.trim().length > 0 && allDocRowsValid);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!canSubmit) return;
-    onSubmit(title.trim(), description.trim(), cleanedRequests);
+    if (donorPreferencesSelected) {
+      onSubmit({ kind: 'deceased-donor-preferences' });
+      return;
+    }
+    onSubmit({
+      kind: 'custom',
+      title: title.trim(),
+      description: description.trim(),
+      documentRequests: cleanedRequests,
+    });
   }
 
   return (
@@ -2915,12 +3267,22 @@ function AddTodoModal({
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {TODO_TEMPLATES.map((template) => (
                   <button
-                    key={template}
+                    key={template.title}
                     type="button"
-                    onClick={() => setTitle(template)}
-                    className="rounded-full bg-[#eef6ff] px-3 py-1 text-xs font-medium text-[#1a66cc] transition hover:bg-[#dbeeff]"
+                    onClick={() => {
+                      setSelectedTemplateKind(template.kind);
+                      setTitle(template.title);
+                      setDescription(template.kind === 'deceased-donor-preferences' ? template.description : '');
+                      if (template.kind === 'deceased-donor-preferences') setDocRequests([]);
+                    }}
+                    className={clsx(
+                      'rounded-full px-3 py-1 text-xs font-medium transition',
+                      selectedTemplateKind === template.kind && title === template.title
+                        ? 'bg-[#1a66cc] text-white'
+                        : 'bg-[#eef6ff] text-[#1a66cc] hover:bg-[#dbeeff]'
+                    )}
                   >
-                    {template}
+                    {template.title}
                   </button>
                 ))}
               </div>
@@ -2932,8 +3294,12 @@ function AddTodoModal({
               <input
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  setSelectedTemplateKind('custom');
+                }}
                 placeholder="What does the patient need to do?"
+                disabled={donorPreferencesSelected}
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
                 autoFocus
               />
@@ -2944,13 +3310,23 @@ function AddTodoModal({
               </span>
               <textarea
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  setSelectedTemplateKind('custom');
+                }}
                 rows={3}
                 placeholder="Add any helpful detail for the patient."
+                disabled={donorPreferencesSelected}
                 className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#3399e6] focus:ring-2 focus:ring-[#dbeeff]"
               />
             </label>
 
+            {donorPreferencesSelected ? (
+              <div className="rounded-xl border border-[#dbeeff] bg-[#eef6ff] px-3 py-3 text-xs leading-relaxed text-[#1a66cc]">
+                This creates a structured donor preferences form in the patient portal. The patient&apos;s
+                submitted answers will appear in this cockpit with response history.
+              </div>
+            ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -3009,6 +3385,7 @@ function AddTodoModal({
                 </div>
               )}
             </div>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
