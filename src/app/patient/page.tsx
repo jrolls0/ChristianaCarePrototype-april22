@@ -3146,19 +3146,17 @@ function DeceasedDonorPreferencesTaskCard({
                 hasError ? 'border-red-400 bg-red-50/30' : 'border-[#d8e4f1] bg-white'
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-semibold leading-relaxed text-slate-900">
-                  {index + 1}. {field.label}
-                  <span className="ml-0.5 text-red-500">*</span>
-                </p>
-                <button
-                  type="button"
-                  onClick={() => toggleEducation(field.key)}
-                  className="shrink-0 rounded-full bg-[#eef6ff] px-2.5 py-1 text-[11px] font-semibold text-[#1a66cc]"
-                >
-                  {educationOpen ? 'Hide' : 'Learn more'}
-                </button>
-              </div>
+              <p className="text-sm font-semibold leading-relaxed text-slate-900">
+                {index + 1}. {field.label}
+                <span className="ml-0.5 text-red-500">*</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => toggleEducation(field.key)}
+                className="mt-2 rounded-full bg-[#eef6ff] px-2.5 py-1 text-[11px] font-semibold text-[#1a66cc]"
+              >
+                {educationOpen ? 'Hide' : 'Learn more'}
+              </button>
 
               {educationOpen && (
                 <p className="mt-3 rounded-xl border border-[#d7e8f8] bg-[#f8fbff] p-3 text-xs leading-relaxed text-slate-600">
@@ -3192,19 +3190,17 @@ function DeceasedDonorPreferencesTaskCard({
           showValidation && !ageValid ? 'border-red-400 bg-red-50/30' : 'border-[#d8e4f1] bg-white'
         }`}
       >
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-sm font-semibold leading-relaxed text-slate-900">
-            What is the maximum donor age you would be comfortable considering?
-            <span className="ml-0.5 text-red-500">*</span>
-          </p>
-          <button
-            type="button"
-            onClick={() => toggleEducation('maximum-donor-age')}
-            className="shrink-0 rounded-full bg-[#eef6ff] px-2.5 py-1 text-[11px] font-semibold text-[#1a66cc]"
-          >
-            {expandedEducation.has('maximum-donor-age') ? 'Hide' : 'Learn more'}
-          </button>
-        </div>
+        <p className="text-sm font-semibold leading-relaxed text-slate-900">
+          What is the maximum donor age you would be comfortable considering?
+          <span className="ml-0.5 text-red-500">*</span>
+        </p>
+        <button
+          type="button"
+          onClick={() => toggleEducation('maximum-donor-age')}
+          className="mt-2 rounded-full bg-[#eef6ff] px-2.5 py-1 text-[11px] font-semibold text-[#1a66cc]"
+        >
+          {expandedEducation.has('maximum-donor-age') ? 'Hide' : 'Learn more'}
+        </button>
         {expandedEducation.has('maximum-donor-age') && (
           <p className="mt-3 rounded-xl border border-[#d7e8f8] bg-[#f8fbff] p-3 text-xs leading-relaxed text-slate-600">
             {MAX_DONOR_AGE_EDUCATION}

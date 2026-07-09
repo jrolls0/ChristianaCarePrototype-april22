@@ -3279,6 +3279,8 @@ function AddTodoModal({
                       'rounded-full px-3 py-1 text-xs font-medium transition',
                       selectedTemplateKind === template.kind && title === template.title
                         ? 'bg-[#1a66cc] text-white'
+                        : template.kind === 'deceased-donor-preferences'
+                          ? 'bg-violet-50 text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100'
                         : 'bg-[#eef6ff] text-[#1a66cc] hover:bg-[#dbeeff]'
                     )}
                   >
